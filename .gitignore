@@ -1,8 +1,16 @@
 # Dependencies
 node_modules/
 
-# Server environment (secrets)
-apps/server/.env
+# Environment files
+.env
+.env.*
+*.local
+
+# Generated project data & assets
+apps/server/storage/
+apps/web/public/assets/
+packages/remotion-core/public/assets/
+packages/remotion-core/src/projects/
 
 # Next.js
 apps/web/.next/
@@ -24,11 +32,11 @@ out/
 npm-debug.log*
 pnpm-debug.log*
 
+# npm lockfile (using pnpm)
+package-lock.json
+
 # OS & editor
 .DS_Store
 Thumbs.db
 *.swp
 *.swo
-
-# Optional: server storage (generated project data)
-# apps/server/storage/

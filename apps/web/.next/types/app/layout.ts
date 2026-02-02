@@ -1,4 +1,4 @@
-// File: C:\Users\malek\OneDrive\Desktop\New folder (2)\3d video\apps\web\src\app\layout.tsx
+// File: C:\Users\hasso\Desktop\Saas\Video Animation\video-animation\video-animation\apps\web\src\app\layout.tsx
 import * as entry from '../../../src/app/layout.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 
