@@ -1,0 +1,14 @@
+{
+  "id": "6c3f3a50-5b6d-42e9-91e2-5d9f5f61d244",
+  "name": "Project 6",
+  "description": "Generated from: \"اريد عمل فيديو احترافي لهذا الشعار هيا شركة autobl...\"",
+  "createdAt": "2026-01-29T09:57:20.163Z",
+  "updatedAt": "2026-01-29T09:57:20.163Z",
+  "status": "draft",
+  "settings": {
+    "fps": 30,
+    "duration": 150,
+    "width": 1920,
+    "height": 1080
+  }
+}

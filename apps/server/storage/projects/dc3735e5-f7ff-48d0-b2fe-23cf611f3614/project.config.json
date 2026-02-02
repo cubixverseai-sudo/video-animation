@@ -1,0 +1,14 @@
+{
+  "id": "dc3735e5-f7ff-48d0-b2fe-23cf611f3614",
+  "name": "Project 1",
+  "description": "Generated from: \"اريد ان تستخدم هذا والشعار في الفيديو والوانه ايضا...\"",
+  "createdAt": "2026-01-29T07:14:38.722Z",
+  "updatedAt": "2026-01-29T07:14:38.722Z",
+  "status": "draft",
+  "settings": {
+    "fps": 30,
+    "duration": 150,
+    "width": 1920,
+    "height": 1080
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "files": [
+    "src/components/Background.tsx",
+    "src/components/Logo.tsx",
+    "src/Main.tsx"
+  ],
+  "decisions": [
+    {
+      "timestamp": "2026-01-29T08:24:44.075Z",
+      "context": "Aesthetic Direction",
+      "choice": "Dark Luxury aesthetic with deep blacks (#050505) and gold/white accents. Using spring physics for scale and interpolate for opacity/blur."
+    }
+  ],
+  "styleDNA": {},
+  "lastUpdated": 1769675096513
+}

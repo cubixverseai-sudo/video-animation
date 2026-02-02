@@ -1,0 +1,20 @@
+{
+    "name": "director-agent",
+    "private": true,
+    "scripts": {
+        "build": "turbo run build",
+        "dev": "turbo run dev",
+        "lint": "turbo run lint",
+        "format": "prettier --write \"**/*.{ts,tsx,md}\""
+    },
+    "devDependencies": {
+        "prettier": "latest",
+        "turbo": "latest",
+        "typescript": "^5.3.0"
+    },
+    "packageManager": "pnpm@10.2.0",
+    "dependencies": {
+        "@remotion/player": "4.0.410",
+        "zustand": "^5.0.10"
+    }
+}

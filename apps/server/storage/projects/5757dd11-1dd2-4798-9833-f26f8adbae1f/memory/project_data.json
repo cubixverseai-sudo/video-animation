@@ -1,0 +1,18 @@
+{
+  "files": [
+    "src/templates/Constants.ts",
+    "src/templates/Intro.tsx",
+    "src/templates/DashboardScene.tsx",
+    "src/templates/Outro.tsx",
+    "src/templates/Main.tsx"
+  ],
+  "decisions": [
+    {
+      "timestamp": "2026-01-29T09:07:42.960Z",
+      "context": "Color Palette & Aesthetic",
+      "choice": "Dark theme (#0a0a0a background) with white/silver accents and smooth expo transitions."
+    }
+  ],
+  "styleDNA": {},
+  "lastUpdated": 1769677680827
+}

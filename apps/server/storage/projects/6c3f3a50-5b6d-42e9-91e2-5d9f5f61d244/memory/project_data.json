@@ -1,0 +1,16 @@
+{
+  "files": [
+    "src/templates/AutoblogScene.tsx",
+    "src/Root.tsx",
+    "src/index.ts"
+  ],
+  "decisions": [
+    {
+      "timestamp": "2026-01-29T09:59:12.895Z",
+      "context": "Animation Engine (GSAP install failed)",
+      "choice": "Native Remotion Animations (spring/interpolate)"
+    }
+  ],
+  "styleDNA": {},
+  "lastUpdated": 1769680769691
+}

@@ -1,0 +1,13 @@
+{
+  "files": [
+    "src/constants.ts",
+    "src/components/Background.tsx",
+    "src/components/Logo.tsx",
+    "src/components/Typography.tsx",
+    "src/CinematicLogo.tsx",
+    "src/components/Particles.tsx"
+  ],
+  "decisions": [],
+  "styleDNA": {},
+  "lastUpdated": 1769670927433
+}

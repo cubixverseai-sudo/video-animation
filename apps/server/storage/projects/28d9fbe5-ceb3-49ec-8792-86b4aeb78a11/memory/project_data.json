@@ -1,0 +1,11 @@
+{
+  "files": [
+    "src/components/Logo.tsx",
+    "src/components/DashboardSlide.tsx",
+    "src/DashboardShowcase.tsx",
+    "src/components/GlitchTransition.tsx"
+  ],
+  "decisions": [],
+  "styleDNA": {},
+  "lastUpdated": 1769679231203
+}

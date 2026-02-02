@@ -1,0 +1,14 @@
+{
+  "id": "5757dd11-1dd2-4798-9833-f26f8adbae1f",
+  "name": "Project 4",
+  "description": "Generated from: \"اريد ان تصنع لي فيديو اعلان لهذه الاداة سوف ارسل ل...\"",
+  "createdAt": "2026-01-29T09:07:24.688Z",
+  "updatedAt": "2026-01-29T09:07:24.688Z",
+  "status": "draft",
+  "settings": {
+    "fps": 30,
+    "duration": 150,
+    "width": 1920,
+    "height": 1080
+  }
+}
