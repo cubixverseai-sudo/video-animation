@@ -415,4 +415,5 @@ NODE_ENV="development"
 # Frontend
 NEXT_PUBLIC_API_URL="http://localhost:4000"
 NEXT_PUBLIC_WS_URL="ws://localhost:4000"
+
 ```
