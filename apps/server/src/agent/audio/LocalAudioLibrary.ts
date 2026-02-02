@@ -8,8 +8,9 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { AudioRequirement, SFXCategory, AudioMood } from './AudioDecisionEngine';
 
-// Base path for local audio library
-const LIBRARY_PATH = path.resolve(__dirname, '../../../storage/audio-library');
+// Base path for local audio library - use process.cwd() for reliable path resolution
+// process.cwd() returns apps/server when running from there
+const LIBRARY_PATH = path.resolve(process.cwd(), 'storage/audio-library');
 
 export interface LocalAudioAsset {
     id: string;
@@ -400,9 +401,10 @@ export async function copyLocalAssetToProject(
     destinationFilename?: string
 ): Promise<string | null> {
     try {
+        // Use process.cwd() for reliable path resolution
         const projectAssetsPath = path.resolve(
-            __dirname, 
-            '../../../storage/projects', 
+            process.cwd(), 
+            'storage/projects', 
             projectId, 
             'assets/audio'
         );

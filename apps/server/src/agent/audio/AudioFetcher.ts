@@ -337,7 +337,12 @@ export class AudioFetcher {
      * Batch fetch all audio requirements from a plan
      */
     async fetchAllFromPlan(plan: AudioPlan): Promise<BatchFetchResult> {
-        const allRequirements = [...plan.bgm, ...plan.sfx, ...plan.ambience];
+        // Safely handle null/undefined arrays with fallbacks
+        const bgm = Array.isArray(plan.bgm) ? plan.bgm : [];
+        const sfx = Array.isArray(plan.sfx) ? plan.sfx : [];
+        const ambience = Array.isArray(plan.ambience) ? plan.ambience : [];
+        
+        const allRequirements = [...bgm, ...sfx, ...ambience];
         const result: BatchFetchResult = {
             successful: [],
             failed: [],
