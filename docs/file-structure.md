@@ -26,6 +26,7 @@ director-agent/
 
 ---
 
+
 ## 2. الهيكل التفصيلي (Detailed Structure)
 
 ```
