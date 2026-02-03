@@ -1,33 +1,28 @@
 /**
- * 🎵 AUDIO FETCHER
- * Multi-source audio fetching with intelligent fallback
- * Sources: Pixabay → Freesound → Local Library
+ * 🎵 AUDIO FETCHER (ElevenLabs Edition)
+ * Centralizes all audio generation for the Director Agent.
+ *
+ * This implementation uses ElevenLabs exclusively:
+ * - ElevenLabs Sound Effects API for SFX / short ambience
+ * - Eleven Music API for BGM / longer musical beds
+ *
+ * All legacy sources (Freesound, Pixabay, local library) have been retired from
+ * the fetching pipeline to keep behavior predictable and fully AI‑driven.
  */
 
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { AudioRequirement, AudioDecisionEngine, AudioPlan } from './AudioDecisionEngine';
-import { findBestPixabayMatch, downloadPixabayAudio, PixabayAudioResult } from './sources/PixabayAudio';
-import { 
-    findBestFreesoundMatch, 
-    downloadFreesoundAudio, 
-    FreesoundResult,
-    isFreesoundConfigured,
-    searchFreesoundSFX,
-    searchFreesoundMusic
-} from './sources/FreesoundAudio';
-import { 
-    findBestLocalMatch, 
-    copyLocalAssetToProject, 
-    LocalAudioAsset,
-    initializeLocalLibrary 
-} from './LocalAudioLibrary';
+import {
+    generateElevenSoundEffect,
+    generateElevenMusic
+} from './sources/ElevenLabsAudio';
 
 // ═══════════════════════════════════════════════════════════════
 // 📋 TYPES
 // ═══════════════════════════════════════════════════════════════
 
-export type AudioSource = 'pixabay' | 'freesound' | 'local';
+export type AudioSource = 'eleven_sfx' | 'eleven_music';
 
 export interface FetchedAudio {
     requirement: AudioRequirement;
@@ -62,11 +57,9 @@ export interface BatchFetchResult {
 export class AudioFetcher {
     private projectId: string;
     private projectAssetsPath: string;
-    private enabledSources: AudioSource[];
 
     constructor(
-        projectId: string,
-        enabledSources: AudioSource[] = ['freesound', 'pixabay', 'local']
+        projectId: string
     ) {
         this.projectId = projectId;
         this.projectAssetsPath = path.resolve(
@@ -75,7 +68,6 @@ export class AudioFetcher {
             projectId,
             'assets/audio'
         );
-        this.enabledSources = enabledSources;
     }
 
     /**
@@ -83,13 +75,14 @@ export class AudioFetcher {
      */
     async initialize(): Promise<void> {
         await fs.mkdir(this.projectAssetsPath, { recursive: true });
-        await initializeLocalLibrary();
         console.log(`🎵 AudioFetcher initialized for project: ${this.projectId}`);
     }
 
     /**
      * Fetch a single audio requirement
-     * Tries sources in order: Freesound → Pixabay → Local
+     * Uses ElevenLabs exclusively for generation:
+     * - SFX / short ambience → Sound Effects API
+     * - BGM / longer beds → Eleven Music API
      */
     async fetchAudio(requirement: AudioRequirement): Promise<FetchResult> {
         const triedSources: AudioSource[] = [];
@@ -97,185 +90,137 @@ export class AudioFetcher {
         console.log(`\n🔍 Fetching audio for: ${requirement.id} (${requirement.type})`);
         console.log(`   Keywords: ${requirement.keywords.join(', ')}`);
 
-        // Determine source order based on audio type
-        let sourceOrder: AudioSource[] = [];
-        
-        if (requirement.type === 'sfx') {
-            // Freesound is best for SFX
-            sourceOrder = ['freesound', 'pixabay', 'local'];
-        } else {
-            // Pixabay might be better for music
-            sourceOrder = ['pixabay', 'freesound', 'local'];
-        }
+        try {
+            let result: FetchedAudio | null = null;
 
-        // Filter by enabled sources
-        sourceOrder = sourceOrder.filter(s => this.enabledSources.includes(s));
-
-        // Try each source in order
-        for (const source of sourceOrder) {
-            triedSources.push(source);
-            
-            try {
-                const result = await this.trySource(source, requirement);
-                
-                if (result) {
-                    console.log(`✅ Successfully fetched from ${source}: ${result.metadata.originalName}`);
-                    return {
-                        success: true,
-                        audio: result,
-                        triedSources
-                    };
-                }
-            } catch (error) {
-                console.warn(`⚠️ ${source} failed:`, error);
+            if (requirement.type === 'sfx') {
+                triedSources.push('eleven_sfx');
+                result = await this.tryElevenSfx(requirement);
+            } else {
+                triedSources.push('eleven_music');
+                result = await this.tryElevenMusic(requirement);
             }
+
+            if (result) {
+                console.log(`✅ Successfully generated from ElevenLabs (${result.source}): ${result.metadata.originalName}`);
+                return {
+                    success: true,
+                    audio: result,
+                    triedSources
+                };
+            }
+        } catch (error) {
+            console.warn('⚠️ ElevenLabs generation failed:', error);
         }
 
-        // All sources failed
+        // Generation failed
         return {
             success: false,
-            error: `Could not find audio matching: ${requirement.keywords.join(', ')}`,
+            error: `Could not generate audio from ElevenLabs for: ${requirement.keywords.join(', ')}`,
             triedSources
         };
     }
 
     /**
-     * Try a specific source
+     * Generate SFX (and short ambience) via ElevenLabs Sound Effects API
      */
-    private async trySource(
-        source: AudioSource,
-        requirement: AudioRequirement
-    ): Promise<FetchedAudio | null> {
-        switch (source) {
-            case 'freesound':
-                return this.tryFreesound(requirement);
-            case 'pixabay':
-                return this.tryPixabay(requirement);
-            case 'local':
-                return this.tryLocal(requirement);
-            default:
-                return null;
-        }
-    }
+    private async tryElevenSfx(requirement: AudioRequirement): Promise<FetchedAudio | null> {
+        console.log('   🔍 Generating SFX via ElevenLabs...');
 
-    /**
-     * Try Freesound source
-     */
-    private async tryFreesound(requirement: AudioRequirement): Promise<FetchedAudio | null> {
-        if (!isFreesoundConfigured()) {
-            console.log('   ℹ️ Freesound not configured, skipping...');
-            return null;
-        }
+        const keywords = requirement.keywords?.join(', ') || '';
+        const baseCategory = requirement.category || 'sound effect';
+        const mood = requirement.mood || 'tech';
 
-        console.log('   🔍 Trying Freesound...');
-        const match = await findBestFreesoundMatch(requirement);
-        
-        if (!match) {
-            console.log('   ❌ No match on Freesound');
-            return null;
-        }
+        const promptParts = [
+            baseCategory,
+            'sound effect',
+            `with ${mood} mood`,
+            keywords && `keywords: ${keywords}`,
+            'high quality, detailed, one-shot, suitable for cinematic motion graphics'
+        ].filter(Boolean);
 
-        // Generate filename
-        const filename = this.generateFilename(requirement, 'freesound', match.id);
+        const prompt = promptParts.join(', ');
+
+        // Convert frames → seconds (assume 30fps as baseline)
+        const rawSeconds = (requirement.duration || 60) / 30;
+        // SFX should generally be short
+        const durationSeconds = Math.max(0.5, Math.min(5, rawSeconds));
+
+        const audioBuffer = await generateElevenSoundEffect({
+            text: prompt,
+            durationSeconds,
+            loop: false,
+            promptInfluence: 0.7,
+            outputFormat: 'mp3_44100_128'
+        });
+
+        const filename = this.generateFilename(requirement, 'eleven_sfx', requirement.id);
         const localPath = path.join(this.projectAssetsPath, filename);
 
-        // Download
-        const downloaded = await downloadFreesoundAudio(match, localPath, true);
-        
-        if (!downloaded) {
-            return null;
-        }
+        await fs.mkdir(path.dirname(localPath), { recursive: true });
+        await fs.writeFile(localPath, audioBuffer);
 
-        // Sync to public folders
         await this.syncToPublicFolders(filename);
 
         return {
             requirement,
-            source: 'freesound',
-            localPath: downloaded,
+            source: 'eleven_sfx',
+            localPath,
             publicPath: `assets/${this.projectId}/audio/${filename}`,
             metadata: {
-                originalName: match.name,
-                duration: match.duration,
+                originalName: prompt,
+                duration: durationSeconds,
                 downloadedAt: new Date().toISOString()
             }
         };
     }
 
     /**
-     * Try Pixabay source
+     * Generate BGM / musical beds via Eleven Music API
      */
-    private async tryPixabay(requirement: AudioRequirement): Promise<FetchedAudio | null> {
-        console.log('   🔍 Trying Pixabay...');
-        const match = await findBestPixabayMatch(requirement);
-        
-        if (!match) {
-            console.log('   ❌ No match on Pixabay');
-            return null;
-        }
+    private async tryElevenMusic(requirement: AudioRequirement): Promise<FetchedAudio | null> {
+        console.log('   🔍 Generating music via ElevenLabs...');
 
-        // Generate filename
-        const filename = this.generateFilename(requirement, 'pixabay', match.id);
+        const keywords = requirement.keywords?.join(', ') || '';
+        const mood = requirement.mood || 'tech';
+
+        const promptParts = [
+            'Background music track',
+            `with ${mood} mood`,
+            keywords && `style: ${keywords}`,
+            'cinematic, cohesive, suitable for motion graphics video'
+        ].filter(Boolean);
+
+        const prompt = promptParts.join(', ');
+
+        // Convert frames → seconds (assume 30fps baseline)
+        const rawSeconds = (requirement.duration || 300) / 30;
+        const durationSeconds = Math.max(10, Math.min(300, rawSeconds));
+
+        const audioBuffer = await generateElevenMusic({
+            prompt,
+            durationSeconds,
+            forceInstrumental: true,
+            modelId: 'music_v1',
+            outputFormat: 'mp3_44100_128'
+        });
+
+        const filename = this.generateFilename(requirement, 'eleven_music', requirement.id);
         const localPath = path.join(this.projectAssetsPath, filename);
 
-        // Download
-        const downloaded = await downloadPixabayAudio(match, localPath);
-        
-        if (!downloaded) {
-            return null;
-        }
+        await fs.mkdir(path.dirname(localPath), { recursive: true });
+        await fs.writeFile(localPath, audioBuffer);
 
-        // Sync to public folders
         await this.syncToPublicFolders(filename);
 
         return {
             requirement,
-            source: 'pixabay',
-            localPath: downloaded,
+            source: 'eleven_music',
+            localPath,
             publicPath: `assets/${this.projectId}/audio/${filename}`,
             metadata: {
-                originalName: match.title,
-                duration: match.duration,
-                downloadedAt: new Date().toISOString()
-            }
-        };
-    }
-
-    /**
-     * Try Local library source
-     */
-    private async tryLocal(requirement: AudioRequirement): Promise<FetchedAudio | null> {
-        console.log('   🔍 Trying Local Library...');
-        const match = findBestLocalMatch(requirement);
-        
-        if (!match) {
-            console.log('   ❌ No match in Local Library');
-            return null;
-        }
-
-        // Generate filename
-        const filename = this.generateFilename(requirement, 'local', match.id);
-
-        // Copy to project
-        const copied = await copyLocalAssetToProject(match, this.projectId, filename);
-        
-        if (!copied) {
-            // If local file doesn't exist, we can't use it
-            console.log('   ⚠️ Local file not available');
-            return null;
-        }
-
-        // Sync to public folders
-        await this.syncToPublicFolders(filename);
-
-        return {
-            requirement,
-            source: 'local',
-            localPath: copied,
-            publicPath: `assets/${this.projectId}/audio/${filename}`,
-            metadata: {
-                originalName: match.name,
-                duration: match.duration,
+                originalName: prompt,
+                duration: durationSeconds,
                 downloadedAt: new Date().toISOString()
             }
         };

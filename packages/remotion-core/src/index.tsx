@@ -1,32 +1,13 @@
-import React from 'react';
-import { AbsoluteFill } from 'remotion';
-
 /**
- * Default placeholder composition.
- * The agent will update this file when a project is loaded/previewed.
+ * Public entrypoint for the Director Remotion bundle.
+ *
+ * IMPORTANT:
+ * - This file should remain stable so that bundlers and tools can always
+ *   import `@director/remotion` without depending on a specific project.
+ * - The *actual* composition to preview is resolved via `PreviewEntry.tsx`,
+ *   which the Agent keeps up to date for the active project.
+ *
+ * This keeps the package API clean while still allowing the Agent to swap
+ * out the current composition dynamically.
  */
-export const CurrentComposition: React.FC = () => {
-    return (
-        <AbsoluteFill
-            style={{
-                backgroundColor: '#0a0a0a',
-                display: 'flex',
-                justifyContent: 'center',
-                alignItems: 'center',
-                fontFamily: 'system-ui, sans-serif',
-            }}
-        >
-            <div style={{ textAlign: 'center', color: '#888' }}>
-                <h1 style={{ fontSize: 48, margin: 0, color: '#fff' }}>Director Agent</h1>
-                <p style={{ fontSize: 24, marginTop: 16 }}>No composition loaded</p>
-                <p style={{ fontSize: 16, marginTop: 8 }}>Create or select a project to begin</p>
-            </div>
-        </AbsoluteFill>
-    );
-};
-
-/**
- * Default props for the composition.
- * The agent will update this when setting up a preview.
- */
-export const currentProps: Record<string, unknown> = {};
+export { CurrentComposition, currentProps } from './PreviewEntry';

@@ -753,14 +753,38 @@ export class AgentCore {
 
                 // --- FILE EXISTENCE & EXPORT VALIDATION ---
                 if (this.projectRoot) {
-                    const relativeFilePath = cleanImportPath.startsWith('./') ? cleanImportPath : `./${cleanImportPath}`;
-                    const fullPath = path.join(this.projectRoot, 'src', relativeFilePath.replace(/\.tsx$/, '') + '.tsx');
+                    // Support both "./templates/Foo.tsx" and "./templates/Foo/index.tsx"
+                    // so the agent can safely pass folder paths without worrying about index files.
+                    const baseRelative = cleanImportPath.startsWith('./') ? cleanImportPath : `./${cleanImportPath}`;
+                    const fileWithoutExt = baseRelative.replace(/\.tsx$/, '');
+
+                    const primaryPath = path.join(this.projectRoot, 'src', fileWithoutExt + '.tsx');
+                    const indexPath = path.join(this.projectRoot, 'src', fileWithoutExt, 'index.tsx');
+
+                    // We'll resolve to whichever exists; if we fall back to index.tsx
+                    // we also normalize cleanImportPath so imports point to ".../index".
+                    let resolvedPath = primaryPath;
+                    try {
+                        await fs.access(primaryPath);
+                    } catch {
+                        try {
+                            await fs.access(indexPath);
+                            resolvedPath = indexPath;
+                            // Ensure import path includes /index so bundlers resolve correctly
+                            if (!/\/index(\.tsx)?$/.test(cleanImportPath)) {
+                                cleanImportPath = `${fileWithoutExt}/index`;
+                            }
+                        } catch (e) {
+                            const errorMsg = `❌ SAFETY REJECTION: The file "${cleanImportPath}" does not exist (tried ${fileWithoutExt}.tsx and ${fileWithoutExt}/index.tsx). Create it with write_file FIRST.`;
+                            this.socketManager.emitAgentLog('error', errorMsg);
+                            return errorMsg;
+                        }
+                    }
 
                     try {
-                        await fs.access(fullPath);
+                        // AUTO-DETECT the actual export name from the resolved file
+                        const fileContent = await fs.readFile(resolvedPath, 'utf-8');
 
-                        // AUTO-DETECT the actual export name from the file!
-                        const fileContent = await fs.readFile(fullPath, 'utf-8');
                         const exportMatch = fileContent.match(/export\s+const\s+(\w+)\s*[=:]/);
 
                         if (exportMatch && exportMatch[1]) {

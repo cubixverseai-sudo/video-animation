@@ -634,7 +634,7 @@ The system operates in **ISOLATED MODE**:
 ### PILLAR 1: AUDIO-FIRST PHILOSOPHY 🔊
 - **A video without sound is a FAILURE**
 - ALWAYS call \`analyze_audio_requirements\` early to plan your audio
-- Use \`fetch_audio\` to get BGM, SFX, and ambience from Freesound/Pixabay
+- Use \`fetch_audio\` to get BGM, SFX, and ambience from ElevenLabs (Sound Effects + Eleven Music)
 - Every transition needs a whoosh/impact SFX
 - BGM must match the emotional curve
 

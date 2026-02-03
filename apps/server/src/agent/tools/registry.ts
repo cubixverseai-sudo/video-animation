@@ -260,7 +260,7 @@ export const TOOLS = [
     },
     {
         name: "fetch_audio",
-        description: "Intelligently fetch audio from multiple sources (Freesound, Pixabay, local library) based on requirements. Automatically handles fallback if one source fails. Use this INSTEAD of manual sound searching.",
+        description: "Generate audio using ElevenLabs (Sound Effects + Eleven Music) based on requirements. Automatically chooses between sound effects and music depending on type. Use this INSTEAD of manual sound searching or legacy sources.",
         parameters: {
             type: "OBJECT",
             properties: {

@@ -10,8 +10,10 @@ export function PreviewContainer() {
     const { status, projectId } = useProjectStore();
     const { isThinking } = useAgentStore();
 
-    // Unlock only when we have a project and its status is active/ready
-    const isLocked = !projectId || status === 'idle' || status === 'generating';
+    // Unlock only when we have a project and the agent is not actively working.
+    // While the agent is thinking/building or the project has not produced a
+    // first render yet, we keep the viewport visually "isolated".
+    const isLocked = !projectId || status === 'idle' || status === 'generating' || isThinking;
 
     // Use the new isolated preview route
     const previewUrl = `/preview/${projectId}`;
