@@ -38,10 +38,11 @@ export class AgentCore {
     private directorMemory: DirectorMemory | null = null;
     private useAdvancedMemory: boolean = true; // Enable new memory system
     
-    // Define workspace root relative to apps/server/dist/agent or src/agent
-    // Assuming process.cwd() is apps/server, we go up to packages/remotion-core
-    private WORKSPACE_ROOT = path.resolve(__dirname, '../../../../packages/remotion-core');
-    private MEMORY_STORAGE_ROOT = path.resolve(process.cwd(), 'storage/memory');
+    // Define workspace roots
+    // REMOTION_ROOT: packages/remotion-core (for component library and Root.tsx)
+    // PROJECTS_ROOT: root /projects folder (single source of truth for all projects)
+    private REMOTION_ROOT = path.resolve(__dirname, '../../../../packages/remotion-core');
+    private PROJECTS_ROOT = path.resolve(process.cwd(), '../../projects');
 
     private currentProjectId: string | null = null;
     private projectRoot: string | null = null;
@@ -50,7 +51,7 @@ export class AgentCore {
     constructor(socketManager: SocketManager) {
         this.socketManager = socketManager;
         // Memory will be initialized per project now
-        this.memory = new AgentMemory(this.WORKSPACE_ROOT);
+        this.memory = new AgentMemory(this.PROJECTS_ROOT);
 
         if (!process.env.GEMINI_API_KEY) {
             console.warn("⚠️ GEMINI_API_KEY is not set!");
@@ -83,8 +84,11 @@ export class AgentCore {
             this.currentProjectId = projectId;
 
             // 1. Set Roots
-            // The isolated persistent storage
-            this.projectRoot = path.resolve(process.cwd(), 'storage/projects', projectId);
+            // Single source of truth: root /projects/{id}/ folder
+            this.projectRoot = path.join(this.PROJECTS_ROOT, projectId);
+
+            // 1.5. Initialize project folder structure if it doesn't exist
+            await this.initializeProjectStructure();
 
             // 2. Load Legacy Memory (for backward compatibility)
             this.memory = new AgentMemory(this.projectRoot);
@@ -93,10 +97,11 @@ export class AgentCore {
             // 3. NEW: Initialize Advanced Director Memory System
             if (this.useAdvancedMemory) {
                 try {
-                    // Ensure memory storage exists
-                    await fs.mkdir(this.MEMORY_STORAGE_ROOT, { recursive: true });
+                    // Memory is stored inside the project folder (single source of truth)
+                    const projectMemoryPath = path.join(this.projectRoot, 'memory');
+                    await fs.mkdir(projectMemoryPath, { recursive: true });
                     
-                    this.directorMemory = await initializeDirectorMemory(this.MEMORY_STORAGE_ROOT);
+                    this.directorMemory = await initializeDirectorMemory(projectMemoryPath);
                     await this.directorMemory.setProjectContext(projectId, this.projectRoot);
                     
                     this.socketManager.emitAgentLog('info', `🧠 Advanced Memory System initialized`);
@@ -107,10 +112,8 @@ export class AgentCore {
                 }
             }
 
-            // 4. Sync existing code to Remotion to ensure preview works immediately
-            await this.syncProjectToRemotion();
-
-            // 5. Reset AI Session with new context
+            // 4. Reset AI Session with new context
+            // Note: No sync needed - projects folder IS the source of truth
             await this.startNewSession();
 
             this.socketManager.emitAgentLog('info', `📂 Switched context to project: ${projectId}`);
@@ -120,24 +123,21 @@ export class AgentCore {
     }
 
     /**
-     * Mirrors the isolated project code into the Remotion engine folder
-     * so it can be rendered/previewed.
+     * Initializes the project folder structure for new projects.
+     * New simplified structure: projects/{id}/ contains everything
      */
-    private async syncProjectToRemotion() {
-        if (!this.currentProjectId || !this.projectRoot) return;
+    private async initializeProjectStructure() {
+        if (!this.projectRoot) return;
 
         try {
-            // Destination: packages/remotion-core/src/projects/[ID]
-            const destDir = path.join(this.WORKSPACE_ROOT, 'src', 'projects', this.currentProjectId);
+            // Create folder structure (simplified - single source of truth)
+            await fs.mkdir(path.join(this.projectRoot, 'assets', 'images'), { recursive: true });
+            await fs.mkdir(path.join(this.projectRoot, 'assets', 'audio'), { recursive: true });
+            await fs.mkdir(path.join(this.projectRoot, 'memory'), { recursive: true });
 
-            // Source: storage/projects/[ID]/src
-            const srcDir = path.join(this.projectRoot, 'src');
-
-            // Recursive copy
-            await fs.cp(srcDir, destDir, { recursive: true, force: true });
-        } catch (e) {
-            // Provide a more graceful fallback if source doesn't exist yet
-            console.warn("Sync warning (new project?):", e);
+            console.log(`📁 Created initial project structure for ${this.currentProjectId}`);
+        } catch (error) {
+            console.error('Failed to initialize project structure:', error);
         }
     }
 
@@ -522,35 +522,53 @@ export class AgentCore {
 
     private async executeTool(name: string, args: any): Promise<any> {
         // --- STRICT PROJECT ISOLATION ---
-        // Since projects are now 'seeded' with framework files, the agent
-        // has EVERYTHING it needs inside its own project storage.
+        // All project files are stored in projects/{id}/ (single source of truth)
+        // Agent can ONLY write to its own project folder
 
         const getSecurePath = (p: string) => {
-            const clean = p.replace(/^packages\/remotion-core\/?/, '').replace(/^\.\//, '');
+            // Clean up the path - remove any leading ./ or path prefixes
+            let clean = p.replace(/^\.\//, '').replace(/^src\//, '');
 
-            // Redirect asset lookups to the project's actual asset folder
-            if (clean.startsWith('assets/') && this.projectRoot) {
-                return path.join(this.projectRoot, clean);
-            }
-
+            // All files go into the project folder
             if (this.projectRoot) {
                 return path.join(this.projectRoot, clean);
             }
-            return path.join(this.WORKSPACE_ROOT, clean);
+            
+            // Fallback to remotion-core (should not happen during normal operation)
+            return path.join(this.REMOTION_ROOT, clean);
         };
 
         switch (name) {
             case 'write_file': {
                 const filePath = getSecurePath(args.path);
-
-                // --- HEURISTIC SYNTAX PROTECTION ---
-                // Prevent duplicate closing blocks which the AI sometimes hallucinates
                 const content = args.content as string;
-                if (content.includes('</AbsoluteFill>')) {
-                    const occurrences = (content.match(/<\/AbsoluteFill>/g) || []).length;
-                    const openings = (content.match(/<AbsoluteFill/g) || []).length;
-                    if (occurrences > openings) {
-                        throw new Error("Syntax Protection: Detected duplicate closing </AbsoluteFill> tags. Please check your component structure.");
+
+                // --- ENHANCED JSX SYNTAX PROTECTION ---
+                if (filePath.endsWith('.tsx') || filePath.endsWith('.jsx')) {
+                    // 1. Check for unbalanced AbsoluteFill tags
+                    const absoluteFillOpenings = (content.match(/<AbsoluteFill/g) || []).length;
+                    const absoluteFillClosings = (content.match(/<\/AbsoluteFill>/g) || []).length;
+                    if (absoluteFillClosings > absoluteFillOpenings) {
+                        throw new Error("Syntax Protection: More closing </AbsoluteFill> tags than openings. Check component structure.");
+                    }
+
+                    // 2. Check for missing React import in .tsx files
+                    if (filePath.endsWith('.tsx') && !content.includes("from 'react'") && !content.includes('from "react"')) {
+                        throw new Error("Syntax Protection: Missing React import. Add: import React from 'react';");
+                    }
+
+                    // 3. Check for unbalanced Sequence tags
+                    const sequenceOpenings = (content.match(/<Sequence/g) || []).length;
+                    const sequenceClosings = (content.match(/<\/Sequence>/g) || []).length;
+                    if (Math.abs(sequenceOpenings - sequenceClosings) > 2) {
+                        throw new Error(`Syntax Protection: Unbalanced Sequence tags (${sequenceOpenings} openings, ${sequenceClosings} closings).`);
+                    }
+
+                    // 4. Basic bracket balance check
+                    const openBraces = (content.match(/\{/g) || []).length;
+                    const closeBraces = (content.match(/\}/g) || []).length;
+                    if (Math.abs(openBraces - closeBraces) > 5) {
+                        throw new Error(`Syntax Protection: Severely unbalanced braces ({ = ${openBraces}, } = ${closeBraces}). Code may be corrupt.`);
                     }
                 }
 
@@ -570,6 +588,14 @@ export class AgentCore {
 
             case 'read_file': {
                 const filePath = getSecurePath(args.path);
+                
+                // Check if file exists first
+                try {
+                    await fs.access(filePath);
+                } catch {
+                    return `📄 File does not exist: ${args.path}\n\nThis is a new project. You need to CREATE this file first using write_file.`;
+                }
+                
                 const content = await fs.readFile(filePath, 'utf-8');
 
                 // Return with line numbers for easier reference
@@ -583,6 +609,14 @@ export class AgentCore {
 
             case 'list_files': {
                 const dirPath = getSecurePath(args.path || '.');
+                
+                // Check if directory exists first
+                try {
+                    await fs.access(dirPath);
+                } catch {
+                    return `📂 Directory does not exist: ${args.path || '.'}\n\nThis is the project root. Files are stored directly here (no src/ folder needed).`;
+                }
+                
                 const entries = await fs.readdir(dirPath, { withFileTypes: true });
 
                 const formatted = entries.map(entry => {
@@ -685,13 +719,12 @@ export class AgentCore {
                     lines.splice(startLine - 1, endLine - startLine + 1, ...newLines);
                 }
 
-                // IMPORTANT: Save edits to Project Storage, NOT global core
+                // IMPORTANT: Save edits to Project Storage (single source of truth)
                 const writePath = getSecurePath(args.path);
                 await fs.mkdir(path.dirname(writePath), { recursive: true });
                 await fs.writeFile(writePath, lines.join('\n'), 'utf-8');
 
                 await this.memory.trackFile(args.path);
-                if (this.currentProjectId) await this.syncProjectToRemotion();
 
                 this.socketManager.emit('project:update', {
                     type: 'file_change',
@@ -699,7 +732,7 @@ export class AgentCore {
                     timestamp: Date.now()
                 });
 
-                return `✏️ Edited ${args.path} (saved to isolated project)`;
+                return `✏️ Edited ${args.path}`;
             }
 
             // ═══════════════════════════════════════════════════════════════
@@ -707,9 +740,9 @@ export class AgentCore {
             // ═══════════════════════════════════════════════════════════════
             case 'run_build_check': {
                 try {
-                    // Run TypeScript check
+                    // Run TypeScript check on remotion-core
                     const { stdout, stderr } = await execAsync('npx tsc --noEmit', {
-                        cwd: this.WORKSPACE_ROOT,
+                        cwd: this.REMOTION_ROOT,
                         timeout: 30000 // 30 second timeout
                     });
 
@@ -731,7 +764,7 @@ export class AgentCore {
 
                 try {
                     const { stdout, stderr } = await execAsync(args.command, {
-                        cwd: this.projectRoot || this.WORKSPACE_ROOT,
+                        cwd: this.projectRoot || this.REMOTION_ROOT,
                         timeout: 60000 // 60 second timeout
                     });
                     return stdout || stderr || '✅ Command completed (no output)';
@@ -746,39 +779,27 @@ export class AgentCore {
             case 'register_composition': {
                 const { componentName, importPath, durationInFrames, fps = 30, width = 1920, height = 1080 } = args;
 
-                // 0. Sanitize Path: Never allow 'src/' prefix in project paths
-                let cleanImportPath = importPath.replace(/^src\//, '').replace(/^\.\/src\//, './');
+                // Clean up the import path - remove ./, src/, and .tsx extension
+                // Agent may pass "src/Main" or "./src/Main" but files are directly in project folder
+                let cleanImportPath = importPath
+                    .replace(/^\.\//, '')
+                    .replace(/^src\//, '')
+                    .replace(/\.tsx$/, '');
 
                 let actualExportName = componentName; // Will be overwritten with detected name
 
                 // --- FILE EXISTENCE & EXPORT VALIDATION ---
                 if (this.projectRoot) {
-                    // Support both "./templates/Foo.tsx" and "./templates/Foo/index.tsx"
-                    // so the agent can safely pass folder paths without worrying about index files.
-                    const baseRelative = cleanImportPath.startsWith('./') ? cleanImportPath : `./${cleanImportPath}`;
-                    const fileWithoutExt = baseRelative.replace(/\.tsx$/, '');
+                    // Files are directly in the project folder (no src/ subfolder)
+                    const primaryPath = path.join(this.projectRoot, cleanImportPath + '.tsx');
 
-                    const primaryPath = path.join(this.projectRoot, 'src', fileWithoutExt + '.tsx');
-                    const indexPath = path.join(this.projectRoot, 'src', fileWithoutExt, 'index.tsx');
-
-                    // We'll resolve to whichever exists; if we fall back to index.tsx
-                    // we also normalize cleanImportPath so imports point to ".../index".
                     let resolvedPath = primaryPath;
                     try {
                         await fs.access(primaryPath);
                     } catch {
-                        try {
-                            await fs.access(indexPath);
-                            resolvedPath = indexPath;
-                            // Ensure import path includes /index so bundlers resolve correctly
-                            if (!/\/index(\.tsx)?$/.test(cleanImportPath)) {
-                                cleanImportPath = `${fileWithoutExt}/index`;
-                            }
-                        } catch (e) {
-                            const errorMsg = `❌ SAFETY REJECTION: The file "${cleanImportPath}" does not exist (tried ${fileWithoutExt}.tsx and ${fileWithoutExt}/index.tsx). Create it with write_file FIRST.`;
-                            this.socketManager.emitAgentLog('error', errorMsg);
-                            return errorMsg;
-                        }
+                        const errorMsg = `❌ SAFETY REJECTION: The file "${cleanImportPath}.tsx" does not exist. Create it with write_file FIRST.`;
+                        this.socketManager.emitAgentLog('error', errorMsg);
+                        return errorMsg;
                     }
 
                     try {
@@ -814,16 +835,13 @@ export class AgentCore {
                     }
                 }
 
-                let actualImportPath = cleanImportPath;
+                // Build the import path using @projects alias (single source of truth)
+                const actualImportPath = this.currentProjectId
+                    ? `@projects/${this.currentProjectId}/${cleanImportPath}`
+                    : cleanImportPath;
 
-                if (this.currentProjectId) {
-                    actualImportPath = cleanImportPath.startsWith('.')
-                        ? `./projects/${this.currentProjectId}/${cleanImportPath.replace(/^\.\//, '').replace(/\.tsx$/, '')}`
-                        : cleanImportPath;
-                }
-
-                // 1. Update Root.tsx
-                const rootPath = path.join(this.WORKSPACE_ROOT, 'src/Root.tsx');
+                // 1. Update Root.tsx in remotion-core
+                const rootPath = path.join(this.REMOTION_ROOT, 'src/Root.tsx');
                 let rootContent = await fs.readFile(rootPath, 'utf-8');
 
                 const aliasName = this.currentProjectId
@@ -864,12 +882,11 @@ export class AgentCore {
                 await fs.writeFile(rootPath, newRootContent, 'utf-8');
 
                 // 3. Update PreviewEntry.tsx (using actualExportName)
-                const previewPath = path.join(this.WORKSPACE_ROOT, 'src/PreviewEntry.tsx');
+                const previewPath = path.join(this.REMOTION_ROOT, 'src/PreviewEntry.tsx');
                 const previewContent = `import { ${actualExportName} as CurrentComp } from '${actualImportPath}';\n\nexport const CurrentComposition = CurrentComp;\nexport const currentProps = {};\n`;
                 await fs.writeFile(previewPath, previewContent, 'utf-8');
 
-                // 4. Sync Project Files (ensure they exist in remotion-core)
-                if (this.currentProjectId) await this.syncProjectToRemotion();
+                // Note: No sync needed - projects folder IS the source of truth
 
                 this.socketManager.emit('project:update', {
                     type: 'composition_registered',
@@ -882,18 +899,19 @@ export class AgentCore {
             }
 
             case 'validate_syntax': {
-                // REAL SYNTAX VALIDATION using TypeScript
+                // ENHANCED VALIDATION: TypeScript compilation + JSX structure checks
                 const files = this.memory.getFiles();
                 if (files.length === 0) return "⚠️ No files tracked in this project yet.";
 
-                this.socketManager.emitAgentLog('info', `🔍 Validating ${files.length} files...`);
+                this.socketManager.emitAgentLog('info', `🔍 Validating ${files.length} files with TypeScript...`);
 
                 const errors: string[] = [];
 
+                // PHASE 1: Basic JSX structure validation (fast, catches obvious issues)
                 for (const file of files) {
                     if (!file.endsWith('.tsx') && !file.endsWith('.ts')) continue;
 
-                    const filePath = path.join(this.projectRoot!, 'src', file);
+                    const filePath = path.join(this.projectRoot!, file);
                     try {
                         const content = await fs.readFile(filePath, 'utf-8');
 
@@ -902,28 +920,115 @@ export class AgentCore {
                         if (syntaxIssues.length > 0) {
                             errors.push(...syntaxIssues);
                         }
+
+                        // Check for required imports
+                        if (file.endsWith('.tsx')) {
+                            if (!content.includes("from 'react'") && !content.includes('from "react"')) {
+                                errors.push(`[${file}] Missing React import`);
+                            }
+                            if (content.includes('useCurrentFrame') && !content.includes("from 'remotion'") && !content.includes('from "remotion"')) {
+                                errors.push(`[${file}] Using useCurrentFrame without importing from 'remotion'`);
+                            }
+                            if (content.includes('useVideoConfig') && !content.includes("from 'remotion'") && !content.includes('from "remotion"')) {
+                                errors.push(`[${file}] Using useVideoConfig without importing from 'remotion'`);
+                            }
+                            if (content.includes('<AbsoluteFill') && !content.includes("from 'remotion'") && !content.includes('from "remotion"')) {
+                                errors.push(`[${file}] Using AbsoluteFill without importing from 'remotion'`);
+                            }
+                        }
                     } catch (e) {
-                        // File doesn't exist - might be OK if not synced yet
+                        errors.push(`[${file}] File not found or unreadable`);
+                    }
+                }
+
+                // PHASE 2: TypeScript compilation check (catches type errors, invalid imports)
+                if (errors.length === 0 && this.projectRoot) {
+                    try {
+                        // Create a temporary tsconfig for validation
+                        const tsconfigContent = JSON.stringify({
+                            compilerOptions: {
+                                target: "ES2020",
+                                module: "ESNext",
+                                moduleResolution: "bundler",
+                                jsx: "react-jsx",
+                                strict: false,
+                                noEmit: true,
+                                skipLibCheck: true,
+                                esModuleInterop: true,
+                                allowSyntheticDefaultImports: true,
+                                baseUrl: ".",
+                                paths: {
+                                    "@projects/*": ["../../projects/*"],
+                                    "@components/*": ["../../packages/remotion-core/src/components/*"]
+                                }
+                            },
+                            include: ["**/*.tsx", "**/*.ts"],
+                            exclude: ["node_modules"]
+                        }, null, 2);
+
+                        const tempTsconfig = path.join(this.projectRoot, 'tsconfig.validate.json');
+                        await fs.writeFile(tempTsconfig, tsconfigContent);
+
+                        try {
+                            // Run TypeScript check
+                            const { stdout, stderr } = await execAsync(
+                                `npx tsc --project "${tempTsconfig}" --noEmit 2>&1`,
+                                {
+                                    cwd: this.projectRoot,
+                                    timeout: 30000,
+                                    env: { ...process.env, NODE_OPTIONS: '' }
+                                }
+                            );
+
+                            const output = stdout || stderr || '';
+                            
+                            // Parse TypeScript errors
+                            const tsErrors = output.split('\n')
+                                .filter(line => line.includes('error TS'))
+                                .slice(0, 10); // Limit to 10 errors
+
+                            if (tsErrors.length > 0) {
+                                errors.push('--- TypeScript Errors ---');
+                                errors.push(...tsErrors);
+                            }
+                        } catch (tscError: any) {
+                            // TypeScript exits with code 1 on errors
+                            const output = tscError.stdout || tscError.stderr || tscError.message || '';
+                            const tsErrors = output.split('\n')
+                                .filter((line: string) => line.includes('error TS') || line.includes('Cannot find'))
+                                .slice(0, 10);
+
+                            if (tsErrors.length > 0) {
+                                errors.push('--- TypeScript Errors ---');
+                                errors.push(...tsErrors);
+                            }
+                        } finally {
+                            // Clean up temp tsconfig
+                            try { await fs.unlink(tempTsconfig); } catch {}
+                        }
+                    } catch (e: any) {
+                        this.socketManager.emitAgentLog('warning', `⚠️ TypeScript check skipped: ${e.message}`);
                     }
                 }
 
                 if (errors.length > 0) {
-                    const errorReport = errors.slice(0, 5).join('\n');
-                    this.socketManager.emitAgentLog('error', `❌ Syntax Errors Found:\n${errorReport}`);
-                    return `❌ SYNTAX ERRORS DETECTED:\n${errorReport}\n\nFix these before deploying!`;
+                    const errorReport = errors.slice(0, 15).join('\n');
+                    this.socketManager.emitAgentLog('error', `❌ Validation Errors Found:\n${errorReport}`);
+                    return `❌ VALIDATION ERRORS DETECTED:\n${errorReport}\n\n⚠️ FIX THESE ERRORS before calling register_composition or deploy_project!`;
                 }
 
-                return "✅ Syntax check passed. All files are valid. Ready to deploy.";
+                this.socketManager.emitAgentLog('success', `✅ All ${files.length} files passed validation`);
+                return "✅ Syntax and TypeScript check passed. All files are valid. Ready to deploy.";
             }
 
             case 'deploy_project': {
                 const { message } = args;
                 this.socketManager.emitAgentLog('info', `🚀 Deploying project: ${message}`);
 
-                await this.syncProjectToRemotion();
+                // No sync needed - projects folder IS the source of truth
                 await this.memory.appendLog(`🚀 DEPLOYED: ${message}`);
 
-                return `🎉 Project successfully deployed to Remotion engine! ${message}`;
+                return `🎉 Project deployed! ${message}`;
             }
 
             case 'update_log': {
@@ -980,18 +1085,9 @@ export class AgentCore {
                     const buffer = Buffer.from(await response.arrayBuffer());
                     await fs.writeFile(destPath, buffer);
 
-                    // Sync to public folders
-                    const webDest = path.resolve(process.cwd(), '../web/public/assets', this.currentProjectId, 'audio', filename);
-                    const remotionDest = path.resolve(process.cwd(), '../../packages/remotion-core/public/assets', this.currentProjectId, 'audio', filename);
-
-                    await fs.mkdir(path.dirname(webDest), { recursive: true });
-                    await fs.mkdir(path.dirname(remotionDest), { recursive: true });
-
-                    await fs.copyFile(destPath, webDest);
-                    await fs.copyFile(destPath, remotionDest);
-
+                    // No sync needed - assets served directly from /projects folder
                     this.socketManager.emitAgentLog('success', `🎵 Sound added: ${filename}`);
-                    return `✅ Success! Sound saved to: assets/${this.currentProjectId}/audio/${filename}`;
+                    return `✅ Success! Sound saved to: assets/${this.currentProjectId}/assets/audio/${filename}`;
                 } catch (e: any) {
                     return `❌ Sound Download Error: ${e.message}`;
                 }
@@ -1057,18 +1153,9 @@ export class AgentCore {
                     const buffer = Buffer.from(await response.arrayBuffer());
                     await fs.writeFile(destPath, buffer);
 
-                    // Also sync to public folders immediately
-                    const webDest = path.resolve(process.cwd(), '../web/public/assets', this.currentProjectId, subDir, filename);
-                    const remotionDest = path.resolve(process.cwd(), '../../packages/remotion-core/public/assets', this.currentProjectId, subDir, filename);
-
-                    await fs.mkdir(path.dirname(webDest), { recursive: true });
-                    await fs.mkdir(path.dirname(remotionDest), { recursive: true });
-
-                    await fs.copyFile(destPath, webDest);
-                    await fs.copyFile(destPath, remotionDest);
-
+                    // No sync needed - assets served directly from /projects folder
                     this.socketManager.emitAgentLog('success', `✅ Asset downloaded: ${filename}`);
-                    return `✅ Success! Asset saved to: assets/${this.currentProjectId}/${subDir}/${filename}\nUse this path in your code.`;
+                    return `✅ Success! Asset saved to: assets/${this.currentProjectId}/assets/${subDir}/${filename}\nUse this path in your code.`;
 
                 } catch (error: any) {
                     return `❌ Download Error: ${error.message}`;

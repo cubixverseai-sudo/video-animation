@@ -15,7 +15,7 @@ export const TOOLS = [
         parameters: {
             type: "OBJECT",
             properties: {
-                path: { type: "STRING", description: "Relative path from packages/remotion-core (e.g., 'src/templates/MyScene.tsx')" },
+                path: { type: "STRING", description: "Relative path in your project folder (e.g., 'Main.tsx' for main composition)" },
                 content: { type: "STRING", description: "The COMPLETE content of the file" }
             },
             required: ["path", "content"]
@@ -125,8 +125,8 @@ export const TOOLS = [
         parameters: {
             type: "OBJECT",
             properties: {
-                componentName: { type: "STRING", description: "Name of the component (e.g., 'MyNewVideo')" },
-                importPath: { type: "STRING", description: "Import path relative to src (e.g., './templates/MyNewVideo')" },
+                componentName: { type: "STRING", description: "Name of the exported component (e.g., 'Main')" },
+                importPath: { type: "STRING", description: "File path in your project folder (e.g., 'Main' for Main.tsx)" },
                 durationInFrames: { type: "NUMBER", description: "Total duration in frames (fps * seconds)" },
                 fps: { type: "NUMBER", description: "Frames per second (default: 30)" },
                 width: { type: "NUMBER", description: "Video width (default: 1920)" },

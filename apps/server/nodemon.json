@@ -5,8 +5,7 @@
     "ext": "ts,js,json",
     "ignore": [
         "src/agent/memory/*",
-        "storage/*",
-        "../../packages/remotion-core/src/projects/*"
+        "../../projects/*"
     ],
     "exec": "ts-node src/index.ts"
 }

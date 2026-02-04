@@ -10,8 +10,13 @@
     "forceConsistentCasingInFileNames": true,
     "declaration": true,
     "declarationMap": true,
-    "outDir": "./dist"
+    "outDir": "./dist",
+    "baseUrl": ".",
+    "paths": {
+      "@projects/*": ["../../projects/*"],
+      "@components/*": ["./src/components/*"]
+    }
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "../../projects/**/*"],
   "exclude": ["node_modules", "dist"]
 }

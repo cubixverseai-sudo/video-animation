@@ -9,10 +9,10 @@ import projectsRouter from './routes/projects';
 app.use(cors());
 app.use(express.json());
 
-// Assets Serving
-app.use('/storage', express.static(path.join(process.cwd(), 'storage')));
-// Mirror serving for remotion
-app.use('/assets', express.static(path.resolve(process.cwd(), '../../packages/remotion-core/public/assets')));
+// Serve project assets directly from the root /projects folder (single source of truth)
+// URL: /assets/{projectId}/assets/{type}/{filename}
+// Maps to: /projects/{projectId}/assets/{type}/{filename}
+app.use('/assets', express.static(path.resolve(process.cwd(), '../../projects')));
 
 app.get('/health', (req, res) => {
     res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });

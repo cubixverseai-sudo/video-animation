@@ -611,7 +611,376 @@ npx remotion render MyComp out.mov --codec=prores --prores-profile=4444
 `;
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// PART 3: DIRECTOR AGENT CINEMATIC EXCELLENCE
+// PART 3: PROFESSIONAL COMPONENT LIBRARY
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const COMPONENT_LIBRARY = `
+# 🎬 PROFESSIONAL COMPONENT LIBRARY
+
+You have access to a comprehensive component library from the @director/remotion package.
+**ALWAYS use these components for high-quality output.**
+
+## 📦 FILE & IMPORT STRUCTURE - CRITICAL!
+
+**Your composition files are created at: \`Main.tsx\`** (directly in your project folder)
+
+**Import components from \`@components\`:**
+
+\`\`\`tsx
+import React from 'react';
+import { AbsoluteFill, Sequence, useCurrentFrame, useVideoConfig, Audio, staticFile, interpolate } from 'remotion';
+
+// ✅ CORRECT: Import from @components
+import { 
+  // Typography
+  KineticText, TypewriterText, GradientText, GlitchText, ShimmerText,
+  CountUp, Countdown, RollingDigits,
+  
+  // Effects
+  FilmGrain, Vignette, ChromaticAberration, LightLeak, LensFlare,
+  Bloom, GlowWrapper, NeonGlow, Scanlines, Letterbox,
+  
+  // Backgrounds
+  GridBackground, ParticleField, GradientBackground, BlobBackground,
+  
+  // Camera
+  VirtualCamera, CameraShake, ParallaxContainer, DepthLayers,
+  
+  // Transitions
+  GlitchTransition, MaskReveal, ZoomTransition, SlideTransition,
+  
+  // Master Wrapper
+  CinematicComposition,
+  
+  // Utilities
+  SPRING_PRESETS, EASING, PALETTES, GRADIENTS, CAMERA_PRESETS,
+  createSpring, staggerDelay, createGlow, rgba,
+} from '@components';
+\`\`\`
+
+## 📁 Project Structure
+
+Your project folder contains:
+- \`Main.tsx\` - Your video composition (this is what you create)
+- \`assets/audio/\` - Audio files (use with staticFile)
+- \`assets/images/\` - Image files (use with staticFile)
+- \`memory/\` - Project memory (managed automatically)
+
+## 🔊 Audio Assets
+
+Use \`staticFile()\` to reference audio from your project:
+\`\`\`tsx
+// Audio is at: /assets/{projectId}/assets/audio/{filename}
+<Audio src={staticFile(\`assets/{projectId}/assets/audio/bgm.mp3\`)} volume={0.5} />
+\`\`\`
+
+---
+
+## 🔤 TYPOGRAPHY COMPONENTS
+
+### KineticText - Per-character animated text
+
+**⚠️ VALID ANIMATION PRESETS (ONLY use these exact values):**
+- \`flipUp\`, \`flipDown\` - 3D flip animations
+- \`slideUp\`, \`slideDown\`, \`slideLeft\`, \`slideRight\` - Slide animations
+- \`scaleUp\`, \`scalePop\` - Scale animations
+- \`fadeIn\` - Fade in (NOT "fade"!)
+- \`blurIn\` - Blur to sharp
+- \`rotateIn\`, \`bounceIn\`, \`elasticIn\` - Dynamic animations
+- \`glitchIn\` - Glitch effect
+- \`waveIn\`, \`spiralIn\`, \`dropIn\`, \`zoomBlur\` - Special effects
+
+**❌ INVALID (will cause errors):** \`fade\`, \`wordReveal\`, \`reveal\`, or any other value not listed above.
+
+\`\`\`tsx
+<KineticText
+  text="HELLO WORLD"
+  fontSize={120}
+  fontWeight={900}
+  color="#ffffff"
+  animation="flipUp"      // ONLY use: flipUp, flipDown, slideUp, slideDown, slideLeft, slideRight, scaleUp, scalePop, fadeIn, blurIn, rotateIn, bounceIn, elasticIn, glitchIn, waveIn, spiralIn, dropIn, zoomBlur
+  springPreset="TEXT_REVEAL"  // SMOOTH, SNAPPY, BOUNCY, DRAMATIC, LOGO_REVEAL, ELASTIC, CINEMATIC, TEXT_REVEAL, IMPACT
+  delay={10}
+  staggerPerChar={2}      // Frames between each character
+  staggerPerWord={5}      // Extra delay between words
+  animateBy="char"        // char, word, or line
+  glow={true}
+  glowColor="#6366f1"
+  gradient="linear-gradient(135deg, #6366f1, #8b5cf6)"
+/>
+\`\`\`
+
+### TypewriterText - Classic typewriter effect
+\`\`\`tsx
+<TypewriterText
+  text="Hello, World!"
+  charsPerSecond={15}
+  cursor={true}
+  cursorBlink={true}
+  delay={0}
+  glow={true}
+/>
+\`\`\`
+
+### GradientText - Animated gradient text
+\`\`\`tsx
+<GradientText
+  text="PREMIUM"
+  gradient="linear-gradient(135deg, #6366f1, #8b5cf6)"
+  animateGradient={true}  // Rotates gradient
+  entrance="scale"        // fade, scale, slideUp
+/>
+\`\`\`
+
+### GlitchText - Cyberpunk glitch effect
+\`\`\`tsx
+<GlitchText
+  text="GLITCH"
+  intensity={0.8}
+  rgbSplit={true}
+  scanlines={true}
+  entranceGlitch={true}
+  continuousGlitch={false}
+/>
+\`\`\`
+
+### CountUp - Animated numbers
+\`\`\`tsx
+<CountUp
+  to={1000000}
+  decimals={0}
+  prefix="$"
+  suffix="+"
+  separator=","
+  duration={60}
+  glow={true}
+/>
+\`\`\`
+
+---
+
+## ✨ VFX COMPONENTS
+
+### CinematicComposition - Master wrapper (RECOMMENDED)
+\`\`\`tsx
+<CinematicComposition
+  preset="film"           // film, modern, cyberpunk, vintage, minimal, dramatic
+  grain={0.15}
+  vignette={0.5}
+  letterbox={true}
+  aspectRatio={2.39}
+  cameraAmbientDrift={true}
+  cameraMoves={[
+    CAMERA_PRESETS.SLOW_PUSH(0, 150),
+    CAMERA_PRESETS.IMPACT_SHAKE(60, 15),
+  ]}
+>
+  {/* Your content */}
+</CinematicComposition>
+\`\`\`
+
+### FilmGrain - Cinematic texture
+\`\`\`tsx
+<FilmGrain intensity={0.15} animated={true} blendMode="overlay" />
+\`\`\`
+
+### Vignette - Edge darkening
+\`\`\`tsx
+<Vignette intensity={0.5} size={0.5} softness={0.5} />
+\`\`\`
+
+### ChromaticAberration - RGB split
+\`\`\`tsx
+<ChromaticAberration offset={4} edgeOnly={true}>
+  {content}
+</ChromaticAberration>
+\`\`\`
+
+### LightLeak - Cinematic flares
+\`\`\`tsx
+<LightLeak preset="warm" intensity={0.7} animated={true} />
+// Presets: warm, cool, golden, pink, cyan, rainbow, sunset, aurora
+\`\`\`
+
+### Bloom - Glow effect
+\`\`\`tsx
+<Bloom intensity={0.5} radius={20}>
+  {content}
+</Bloom>
+\`\`\`
+
+---
+
+## 🎨 BACKGROUND COMPONENTS
+
+### GridBackground - Professional grid
+\`\`\`tsx
+<GridBackground
+  style="perspective"     // perspective, flat, dots, isometric, radial, hexagonal
+  cellSize={80}
+  lineColor="#1a1a2e"
+  animated={true}
+  glow={true}
+  fadeEdges={true}
+/>
+\`\`\`
+
+### ParticleField - Ambient particles
+\`\`\`tsx
+<ParticleField
+  preset="dust"           // stars, dust, snow, rain, fireflies, bubbles, confetti, sparks, embers, bokeh
+  count={50}
+  speed={0.5}
+  glow={true}
+/>
+\`\`\`
+
+### GradientBackground - Dynamic gradients
+\`\`\`tsx
+<GradientBackground
+  type="mesh"             // linear, radial, conic, mesh, aurora, wave
+  colors={['#0a0a0f', '#1a1025', '#6366f1']}
+  animated={true}
+/>
+\`\`\`
+
+---
+
+## 🎥 CAMERA COMPONENTS
+
+### VirtualCamera - Cinematic movements
+\`\`\`tsx
+<VirtualCamera
+  moves={[
+    { type: 'dolly_in', startFrame: 0, endFrame: 60, intensity: 0.3 },
+    { type: 'shake', startFrame: 60, endFrame: 75, intensity: 0.8 },
+  ]}
+  ambientDrift={true}
+>
+  {content}
+</VirtualCamera>
+
+// Camera move types:
+// dolly_in, dolly_out, pan_left, pan_right, tilt_up, tilt_down
+// crane_up, crane_down, zoom_in, zoom_out, shake, drift, orbit
+\`\`\`
+
+### DepthLayers - Easy parallax
+\`\`\`tsx
+<DepthLayers
+  background={<GridBackground />}
+  midground={<ParticleField preset="dust" />}
+  content={<KineticText text="HELLO" />}
+  foreground={<ParticleField preset="bokeh" count={10} />}
+  movement="drift"
+  depthBlur={true}
+/>
+\`\`\`
+
+---
+
+## 🔄 TRANSITION COMPONENTS
+
+### MaskReveal - Shape reveal
+\`\`\`tsx
+<MaskReveal
+  startFrame={30}
+  duration={30}
+  shape="circle"          // circle, rectangle, diamond, horizontal-wipe, vertical-wipe, diagonal-wipe, iris
+  direction="in"
+>
+  {content}
+</MaskReveal>
+\`\`\`
+
+### GlitchTransition - Glitch reveal
+\`\`\`tsx
+<GlitchTransition
+  startFrame={30}
+  duration={15}
+  intensity={1}
+  revealing={true}
+>
+  {content}
+</GlitchTransition>
+\`\`\`
+
+---
+
+## 🛠️ UTILITY CONSTANTS
+
+### SPRING_PRESETS
+\`\`\`tsx
+SPRING_PRESETS.SMOOTH      // No bounce, elegant
+SPRING_PRESETS.SNAPPY      // Quick, minimal bounce
+SPRING_PRESETS.BOUNCY      // Playful bounce
+SPRING_PRESETS.DRAMATIC    // Heavy, cinematic
+SPRING_PRESETS.LOGO_REVEAL // Optimized for logos
+SPRING_PRESETS.TEXT_REVEAL // Optimized for text
+SPRING_PRESETS.IMPACT      // Strong landing
+\`\`\`
+
+### PALETTES
+\`\`\`tsx
+PALETTES.DARK    // Default dark mode
+PALETTES.TECH    // Cyan/green tech
+PALETTES.LUXURY  // Gold/premium
+PALETTES.VIBRANT // Pink/purple energy
+PALETTES.CLEAN   // Light minimal
+PALETTES.WARM    // Orange sunset
+PALETTES.COOL    // Blue ocean
+\`\`\`
+
+### Helper Functions
+\`\`\`tsx
+createSpring({ frame, fps, delay: 10, preset: 'SMOOTH' })
+staggerDelay(index, staggerFrames: 3, baseDelay: 0)
+createGlow('#6366f1', intensity: 1)
+rgba('#ffffff', 0.5)
+\`\`\`
+
+---
+
+## 🎯 BEST COMPOSITION STRUCTURE
+
+\`\`\`tsx
+export const MyVideo: React.FC = () => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  
+  return (
+    <CinematicComposition preset="film" grain={0.12} vignette={0.4}>
+      {/* Background Layer */}
+      <AbsoluteFill>
+        <GradientBackground type="mesh" colors={['#030303', '#0a1020']} />
+        <GridBackground style="perspective" animated />
+        <ParticleField preset="dust" count={30} />
+      </AbsoluteFill>
+      
+      {/* Content Layer */}
+      <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center' }}>
+        <KineticText
+          text="HEADLINE"
+          fontSize={120}
+          animation="flipUp"
+          springPreset="DRAMATIC"
+          glow
+        />
+      </AbsoluteFill>
+      
+      {/* Audio Layer */}
+      <Audio src={staticFile('audio/bgm.mp3')} volume={0.4} />
+      <Sequence from={28}>
+        <Audio src={staticFile('audio/impact.mp3')} volume={0.8} />
+      </Sequence>
+    </CinematicComposition>
+  );
+};
+\`\`\`
+`;
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PART 4: DIRECTOR AGENT CINEMATIC EXCELLENCE
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const DIRECTOR_CREATIVE_GUIDANCE = `
@@ -740,11 +1109,24 @@ The system operates in **ISOLATED MODE**:
 5. Add transitions between scenes
 \`\`\`
 
-### Step 4: VALIDATE & REGISTER
+### Step 4: VALIDATE & REGISTER (MANDATORY - NO EXCEPTIONS)
 \`\`\`
-1. Call validate_syntax
-2. Call register_composition
+1. Call validate_syntax - THIS IS MANDATORY BEFORE REGISTER
+   - If errors are returned, FIX THEM IMMEDIATELY
+   - Re-run validate_syntax until it passes
+   - DO NOT proceed to register_composition if validation fails
+2. Call register_composition ONLY after validate_syntax passes
 \`\`\`
+
+⚠️ **CRITICAL VERIFICATION PROTOCOL:**
+- You MUST call \`validate_syntax\` after EVERY \`write_file\` call
+- If validation fails, you MUST fix the errors and re-validate
+- NEVER call \`register_composition\` or \`deploy_project\` with failing validation
+- The validate_syntax tool runs REAL TypeScript compilation - it catches:
+  - Missing imports
+  - Invalid component usage
+  - Type errors
+  - Syntax errors
 
 ### Step 5: DEPLOY & LEARN
 \`\`\`
@@ -798,6 +1180,16 @@ fetch_audio: { type: "ambience", mood: "tech" }
 6. **NO SIMULTANEOUS REVEALS** - Stagger everything
 7. **NO HOTLINKING** - Download all assets first via tools
 8. **NO useFrame()** - Only useCurrentFrame() for Three.js
+9. **NO SKIPPING VALIDATION** - Always call validate_syntax before register_composition
+10. **NO DEPLOYING WITH ERRORS** - Fix all validation errors first
+
+## ⚙️ REACT 18 COMPATIBILITY
+
+This project uses **React 18.3.1** with **Remotion v4**. Ensure:
+- All imports from 'react' are compatible with React 18
+- Use \`React.FC\` for functional components
+- Always import React: \`import React from 'react';\`
+- Hooks like \`useCurrentFrame\` and \`useVideoConfig\` require proper Remotion context
 
 ---
 
@@ -829,6 +1221,10 @@ ${REMOTION_FUNDAMENTALS}
 ---
 
 ${REMOTION_BEST_PRACTICES}
+
+---
+
+${COMPONENT_LIBRARY}
 
 ---
 

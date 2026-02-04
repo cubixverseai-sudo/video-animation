@@ -23,9 +23,9 @@
             }
         ],
         "paths": {
-            "@/*": [
-                "./src/*"
-            ]
+            "@/*": ["./src/*"],
+            "@projects/*": ["../../projects/*"],
+            "@components/*": ["../../packages/remotion-core/src/components/*"]
         },
         "baseUrl": "."
     },

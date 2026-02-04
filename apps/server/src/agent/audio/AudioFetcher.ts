@@ -62,9 +62,10 @@ export class AudioFetcher {
         projectId: string
     ) {
         this.projectId = projectId;
+        // Single source of truth: root /projects/{id}/assets/audio
         this.projectAssetsPath = path.resolve(
             process.cwd(),
-            'storage/projects',
+            '../../projects',
             projectId,
             'assets/audio'
         );
@@ -242,40 +243,12 @@ export class AudioFetcher {
     }
 
     /**
-     * Sync audio file to public folders for Remotion and Web
+     * Log that file was saved (no sync needed - single source of truth)
      */
     private async syncToPublicFolders(filename: string): Promise<void> {
-        const sourcePath = path.join(this.projectAssetsPath, filename);
-
-        // Destinations
-        const remotionDest = path.resolve(
-            process.cwd(),
-            '../../packages/remotion-core/public/assets',
-            this.projectId,
-            'audio',
-            filename
-        );
-        const webDest = path.resolve(
-            process.cwd(),
-            '../web/public/assets',
-            this.projectId,
-            'audio',
-            filename
-        );
-
-        try {
-            // Ensure directories exist
-            await fs.mkdir(path.dirname(remotionDest), { recursive: true });
-            await fs.mkdir(path.dirname(webDest), { recursive: true });
-
-            // Copy files
-            await fs.copyFile(sourcePath, remotionDest);
-            await fs.copyFile(sourcePath, webDest);
-
-            console.log(`   📁 Synced to public folders`);
-        } catch (error) {
-            console.error('   ⚠️ Failed to sync to public folders:', error);
-        }
+        // No sync needed - assets are served directly from /projects/{id}/assets/
+        // via Express static middleware
+        console.log(`   📁 Saved to project folder`);
     }
 
     /**

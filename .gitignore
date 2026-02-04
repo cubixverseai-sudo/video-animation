@@ -6,7 +6,11 @@ node_modules/
 .env.*
 *.local
 
-# Generated project data & assets
+# Generated project data & assets (single source of truth)
+projects/*/
+!projects/.gitkeep
+
+# Legacy paths (can be removed after cleanup)
 apps/server/storage/
 apps/web/public/assets/
 packages/remotion-core/public/assets/

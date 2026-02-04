@@ -401,10 +401,10 @@ export async function copyLocalAssetToProject(
     destinationFilename?: string
 ): Promise<string | null> {
     try {
-        // Use process.cwd() for reliable path resolution
+        // Single source of truth: root /projects/{id}/assets/audio
         const projectAssetsPath = path.resolve(
             process.cwd(), 
-            'storage/projects', 
+            '../../projects', 
             projectId, 
             'assets/audio'
         );

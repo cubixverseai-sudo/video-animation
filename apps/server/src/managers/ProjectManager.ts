@@ -2,7 +2,8 @@ import fs from 'fs/promises';
 import path from 'path';
 import { randomUUID } from 'crypto';
 
-const STORAGE_ROOT = path.join(process.cwd(), 'storage', 'projects');
+// Single source of truth: root /projects folder
+const PROJECTS_ROOT = path.resolve(process.cwd(), '../../projects');
 
 export interface ProjectConfig {
     id: string;
@@ -46,20 +47,13 @@ export class ProjectManager {
         }
 
         const id = randomUUID();
-        const projectPath = path.join(STORAGE_ROOT, id);
-        const projectSrc = path.join(projectPath, 'src');
+        const projectPath = path.join(PROJECTS_ROOT, id);
 
-        // 1. Create Empty Directory Structure
+        // 1. Create Directory Structure (simplified - single source of truth)
         await fs.mkdir(projectPath, { recursive: true });
         await fs.mkdir(path.join(projectPath, 'memory'), { recursive: true });
-
-        // Asset Subdirectories
-        const assetsPath = path.join(projectPath, 'assets');
-        await fs.mkdir(assetsPath, { recursive: true });
-        await fs.mkdir(path.join(assetsPath, 'images'), { recursive: true });
-        await fs.mkdir(path.join(assetsPath, 'audio'), { recursive: true });
-
-        await fs.mkdir(projectSrc, { recursive: true });
+        await fs.mkdir(path.join(projectPath, 'assets', 'images'), { recursive: true });
+        await fs.mkdir(path.join(projectPath, 'assets', 'audio'), { recursive: true });
 
         // 2. Initialize Config
         const config: ProjectConfig = {
@@ -78,7 +72,7 @@ export class ProjectManager {
         };
 
         await fs.writeFile(
-            path.join(projectPath, 'project.config.json'),
+            path.join(projectPath, 'config.json'),
             JSON.stringify(config, null, 2)
         );
 
@@ -129,7 +123,7 @@ export class ProjectManager {
      */
     async getProject(id: string): Promise<ProjectConfig | null> {
         try {
-            const configPath = path.join(STORAGE_ROOT, id, 'project.config.json');
+            const configPath = path.join(PROJECTS_ROOT, id, 'config.json');
             const data = await fs.readFile(configPath, 'utf-8');
             return JSON.parse(data) as ProjectConfig;
         } catch (error) {
@@ -142,11 +136,14 @@ export class ProjectManager {
      */
     async listProjects(): Promise<ProjectConfig[]> {
         try {
-            await fs.mkdir(STORAGE_ROOT, { recursive: true });
-            const dirs = await fs.readdir(STORAGE_ROOT);
+            await fs.mkdir(PROJECTS_ROOT, { recursive: true });
+            const dirs = await fs.readdir(PROJECTS_ROOT);
             const projects: ProjectConfig[] = [];
 
             for (const dir of dirs) {
+                // Skip hidden files and .gitkeep
+                if (dir.startsWith('.')) continue;
+                
                 const config = await this.getProject(dir);
                 if (config) {
                     projects.push(config);
@@ -176,7 +173,7 @@ export class ProjectManager {
         };
 
         await fs.writeFile(
-            path.join(STORAGE_ROOT, id, 'project.config.json'),
+            path.join(PROJECTS_ROOT, id, 'config.json'),
             JSON.stringify(updatedProject, null, 2)
         );
 
@@ -184,10 +181,11 @@ export class ProjectManager {
     }
 
     /**
-     * Saves an uploaded file to the project's asset folder and syncs it.
+     * Saves an uploaded file to the project's asset folder.
+     * No sync needed - assets are served directly from /projects folder.
      */
     async saveAsset(projectId: string, file: { buffer: Buffer, originalname: string, mimetype: string }) {
-        const projectPath = path.join(STORAGE_ROOT, projectId);
+        const projectPath = path.join(PROJECTS_ROOT, projectId);
         const subDir = file.mimetype.startsWith('audio') ? 'audio' : 'images';
         const targetDir = path.join(projectPath, 'assets', subDir);
         const targetPath = path.join(targetDir, file.originalname);
@@ -195,53 +193,29 @@ export class ProjectManager {
         await fs.mkdir(targetDir, { recursive: true });
         await fs.writeFile(targetPath, file.buffer);
 
-        // Mirror to remotion-core public
-        await this.syncAssetsToPublic(projectId);
-
-        return `/assets/${projectId}/${subDir}/${file.originalname}`;
+        // Return the public path for serving via Express
+        return `/assets/${projectId}/assets/${subDir}/${file.originalname}`;
     }
 
     /**
-     * Mirrors the project assets to BOTH remotion-core and web app public folders.
-     * This is necessary because the Next.js Player uses the web app's public folder.
+     * Deletes a project and all its files.
      */
-    async syncAssetsToPublic(projectId: string) {
-        const sourcePath = path.join(STORAGE_ROOT, projectId, 'assets');
-
-        // Two destinations: Remotion core (for Remotion Studio) and Web app (for Next.js Player)
-        const remotionDest = path.resolve(process.cwd(), '../../packages/remotion-core/public/assets', projectId);
-        const webDest = path.resolve(process.cwd(), '../web/public/assets', projectId);
-
-        // Helper to recursively copy directories
-        const copyDir = async (src: string, dest: string) => {
-            await fs.mkdir(dest, { recursive: true });
-            const entries = await fs.readdir(src, { withFileTypes: true });
-
-            for (const entry of entries) {
-                const srcPath = path.join(src, entry.name);
-                const destPath = path.join(dest, entry.name);
-
-                if (entry.isDirectory()) {
-                    await copyDir(srcPath, destPath);
-                } else {
-                    await fs.copyFile(srcPath, destPath);
-                }
-            }
-        };
-
+    async deleteProject(id: string): Promise<boolean> {
         try {
-            // Copy to Remotion core
-            await fs.mkdir(remotionDest, { recursive: true });
-            await copyDir(sourcePath, remotionDest);
-
-            // Copy to Web app
-            await fs.mkdir(webDest, { recursive: true });
-            await copyDir(sourcePath, webDest);
-
-            console.log(`✅ Assets synced for project ${projectId} to both destinations.`);
+            const projectPath = path.join(PROJECTS_ROOT, id);
+            await fs.rm(projectPath, { recursive: true, force: true });
+            return true;
         } catch (error) {
-            console.error(`Failed to sync assets for project ${projectId}:`, error);
+            console.error(`Failed to delete project ${id}:`, error);
+            return false;
         }
+    }
+
+    /**
+     * Gets the full path to a project folder.
+     */
+    getProjectPath(id: string): string {
+        return path.join(PROJECTS_ROOT, id);
     }
 }
 
