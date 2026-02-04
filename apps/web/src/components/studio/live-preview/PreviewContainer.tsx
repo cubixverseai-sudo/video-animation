@@ -7,13 +7,37 @@ import { useProjectStore } from '@/stores/projectStore';
 import { useAgentStore } from '@/stores/agentStore';
 
 export function PreviewContainer() {
+    const { socket } = useSocket();
     const { status, projectId } = useProjectStore();
     const { isThinking } = useAgentStore();
+    
+    // Track if the preview is ready (set when preview:ready event is received)
+    const [isPreviewReady, setIsPreviewReady] = useState(false);
+    
+    // Reset preview ready state when agent starts working
+    useEffect(() => {
+        if (isThinking) {
+            setIsPreviewReady(false);
+        }
+    }, [isThinking]);
+    
+    // Listen for preview:ready event from server
+    useEffect(() => {
+        if (!socket) return;
+        
+        const handlePreviewReady = () => {
+            setIsPreviewReady(true);
+        };
+        
+        socket.on('preview:ready', handlePreviewReady);
+        
+        return () => {
+            socket.off('preview:ready', handlePreviewReady);
+        };
+    }, [socket]);
 
-    // Unlock only when we have a project and the agent is not actively working.
-    // While the agent is thinking/building or the project has not produced a
-    // first render yet, we keep the viewport visually "isolated".
-    const isLocked = !projectId || status === 'idle' || status === 'generating' || isThinking;
+    // Unlock only when preview is ready and agent is not actively working
+    const isLocked = !projectId || status === 'idle' || status === 'generating' || isThinking || !isPreviewReady;
 
     // Use the new isolated preview route
     const previewUrl = `/preview/${projectId}`;

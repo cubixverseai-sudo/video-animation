@@ -1,15 +1,12 @@
 import React from 'react';
 import { Composition } from 'remotion';
 import { CurrentComposition } from './index';
-import { Main as Main_8658a2d4 } from '@projects/8658a2d4-5cbb-44b6-98a7-44009a1c2b51/Main';
-import { Main as Main_1023debb } from '@projects/1023debb-cbbc-4153-b259-12867ffa8c71/Main';
+import { Main as Main_70923053 } from '@projects/70923053-093d-4a94-a518-db381134bfb9/Main';
 
 /**
  * Root component for Remotion.
- * The Director Agent dynamically adds compositions here using register_composition tool.
- * 
- * Architecture: Projects are stored in root /projects folder (single source of truth)
- * Imports use @projects path alias: import { Comp } from '@projects/{projectId}/Main';
+ * The Director Agent dynamically updates this file using register_composition tool.
+ * Only the CURRENT project is imported to prevent old broken projects from blocking compilation.
  */
 export const RemotionRoot: React.FC = () => {
     return (
@@ -18,30 +15,20 @@ export const RemotionRoot: React.FC = () => {
             <Composition
                 id="Default"
                 component={CurrentComposition}
-                durationInFrames={450}
+                durationInFrames={240}
                 fps={30}
                 width={1920}
                 height={1080}
             />
-            {/* Agent-registered compositions are dynamically added below */}
-        <Composition
-            id="8658a2d4-5cbb-44b6-98a7-44009a1c2b51:Main"
-            component={Main_8658a2d4}
-            durationInFrames={300}
-            fps={30}
-            width={1920}
-            height={1080}
-        />
-        <Composition
-            id="1023debb-cbbc-4153-b259-12867ffa8c71:Main"
-            component={Main_1023debb}
-            durationInFrames={450}
-            fps={30}
-            width={1920}
-            height={1080}
-        />
-
-
+            {/* Current project composition */}
+            <Composition
+                id="70923053-093d-4a94-a518-db381134bfb9:Main"
+                component={Main_70923053}
+                durationInFrames={240}
+                fps={30}
+                width={1920}
+                height={1080}
+            />
         </>
     );
 };

@@ -47,6 +47,12 @@ export class AgentCore {
     private currentProjectId: string | null = null;
     private projectRoot: string | null = null;
     private initPromise: Promise<void> | null = null;
+    
+    // Pending preview info - stored during register_composition, applied on agent:complete
+    private pendingPreview: {
+        actualExportName: string;
+        actualImportPath: string;
+    } | null = null;
 
     constructor(socketManager: SocketManager) {
         this.socketManager = socketManager;
@@ -63,7 +69,7 @@ export class AgentCore {
 
             // Use standard model with tools configuration
             this.model = genAI.getGenerativeModel({
-                model: "gemini-3-pro-preview",
+                model: "gemini-2.5-pro",
                 tools: [{ functionDeclarations: TOOLS }] as any
             });
 
@@ -510,6 +516,9 @@ export class AgentCore {
                 functionCalls = response.functionCalls();
             }
 
+            // Finalize preview before completing - this writes PreviewEntry.tsx
+            await this.finalizePreview();
+            
             this.socketManager.emitAgentLog('success', 'Task completed.');
             this.socketManager.emit('agent:complete', { success: true });
 
@@ -517,6 +526,39 @@ export class AgentCore {
             console.error("Gemini Error:", error);
             this.socketManager.emitAgentLog('error', `AI Error: ${error.message}`);
             this.socketManager.emit('agent:complete', { success: false, error: error.message });
+        }
+    }
+    
+    /**
+     * Finalizes the preview by writing PreviewEntry.tsx with the pending composition.
+     * Called only when the agent completes successfully.
+     */
+    private async finalizePreview(): Promise<void> {
+        if (!this.pendingPreview) {
+            this.socketManager.emitAgentLog('info', '📋 No pending preview to finalize');
+            return;
+        }
+        
+        const { actualExportName, actualImportPath } = this.pendingPreview;
+        
+        try {
+            const previewPath = path.join(this.REMOTION_ROOT, 'src/PreviewEntry.tsx');
+            const previewContent = `import { ${actualExportName} as CurrentComp } from '${actualImportPath}';\n\nexport const CurrentComposition = CurrentComp;\nexport const currentProps = {};\n`;
+            await fs.writeFile(previewPath, previewContent, 'utf-8');
+            
+            this.socketManager.emitAgentLog('success', '🎬 Preview activated!');
+            
+            // Emit preview:ready event so frontend knows it's safe to display
+            this.socketManager.emit('preview:ready', {
+                componentName: actualExportName,
+                importPath: actualImportPath,
+                timestamp: Date.now()
+            });
+            
+            // Clear pending preview
+            this.pendingPreview = null;
+        } catch (error: any) {
+            this.socketManager.emitAgentLog('error', `Failed to finalize preview: ${error.message}`);
         }
     }
 
@@ -541,7 +583,60 @@ export class AgentCore {
         switch (name) {
             case 'write_file': {
                 const filePath = getSecurePath(args.path);
-                const content = args.content as string;
+                let content = args.content as string;
+
+                // --- FIX LLM LINE-BREAK CORRUPTION ---
+                // Gemini sometimes inserts line breaks in the middle of code lines at ~50 char width.
+                // This aggressively fixes the corruption by detecting and joining broken lines.
+                if (filePath.endsWith('.tsx') || filePath.endsWith('.ts') || filePath.endsWith('.jsx') || filePath.endsWith('.js')) {
+                    // Normalize line endings first
+                    content = content.replace(/\r\n/g, '\n');
+                    
+                    // Split into lines and rejoin broken ones
+                    const lines = content.split('\n');
+                    const fixedLines: string[] = [];
+                    
+                    for (let i = 0; i < lines.length; i++) {
+                        const line = lines[i];
+                        const nextLine = lines[i + 1] || '';
+                        
+                        // Detect if this line is broken mid-statement:
+                        // 1. Line ends with a letter/number and next starts with lowercase letter
+                        // 2. Line ends mid-word (no semicolon, no closing bracket, no comma at natural break)
+                        // 3. Line is suspiciously short (~40-60 chars) and doesn't end with a statement terminator
+                        
+                        const endsWithWordChar = /[a-zA-Z0-9_\-\/]$/.test(line.trimEnd());
+                        const nextStartsWithContinuation = /^\s*[a-z0-9_\-\/]/.test(nextLine);
+                        const lineIsSuspiciouslyShort = line.length > 20 && line.length < 70;
+                        const endsWithStatementTerminator = /[;,{})\]>]$/.test(line.trimEnd());
+                        const endsWithOpenBracket = /[({<\[]$/.test(line.trimEnd());
+                        
+                        // If line appears broken, join with next line
+                        if (endsWithWordChar && nextStartsWithContinuation && lineIsSuspiciouslyShort && !endsWithStatementTerminator && !endsWithOpenBracket) {
+                            // Join this line with the next, removing the newline
+                            fixedLines.push(line + nextLine.trimStart());
+                            i++; // Skip the next line since we merged it
+                        } else {
+                            fixedLines.push(line);
+                        }
+                    }
+                    
+                    content = fixedLines.join('\n');
+                    
+                    // Additional fixes for any remaining issues
+                    // Fix broken string literals - line break inside quotes (handles template literals too)
+                    content = content.replace(/'([^'\n]{0,100})\n\s*([^'\n]{0,100})'/g, "'$1$2'");
+                    content = content.replace(/"([^"\n]{0,100})\n\s*([^"\n]{0,100})"/g, '"$1$2"');
+                    content = content.replace(/`([^`\n]{0,100})\n\s*([^`\n]{0,100})`/g, '`$1$2`');
+                    
+                    // Fix broken identifiers (word\nword -> wordword)
+                    content = content.replace(/([a-zA-Z])[\n\r]+([a-zA-Z])/g, '$1$2');
+                    
+                    // Clean up multiple spaces (but preserve indentation)
+                    content = content.replace(/([^\n]) {2,}/g, '$1 ');
+                    
+                    this.socketManager.emitAgentLog('info', '🔧 Applied LLM line-break fix to content');
+                }
 
                 // --- ENHANCED JSX SYNTAX PROTECTION ---
                 if (filePath.endsWith('.tsx') || filePath.endsWith('.jsx')) {
@@ -573,7 +668,7 @@ export class AgentCore {
                 }
 
                 await fs.mkdir(path.dirname(filePath), { recursive: true });
-                await fs.writeFile(filePath, args.content, 'utf-8');
+                await fs.writeFile(filePath, content, 'utf-8');
 
                 await this.memory.trackFile(args.path);
 
@@ -709,14 +804,27 @@ export class AgentCore {
                 for (const edit of sortedEdits) {
                     const { startLine, endLine, newContent } = edit;
 
-                    // Validate line numbers
-                    if (startLine < 1 || endLine > lines.length || startLine > endLine) {
-                        throw new Error(`Invalid line range: ${startLine}-${endLine} (file has ${lines.length} lines)`);
+                    // Validate and clamp line numbers (resilient to file length changes from LLM line-break fix)
+                    if (startLine < 1) {
+                        throw new Error(`Invalid start line: ${startLine} (must be >= 1)`);
+                    }
+                    
+                    // Clamp endLine to actual file length instead of throwing
+                    const actualEndLine = Math.min(endLine, lines.length);
+                    if (actualEndLine !== endLine) {
+                        this.socketManager.emitAgentLog('warning', 
+                            `⚠️ Clamped edit range from ${startLine}-${endLine} to ${startLine}-${actualEndLine} (file has ${lines.length} lines)`);
+                    }
+                    
+                    if (startLine > actualEndLine) {
+                        this.socketManager.emitAgentLog('warning', 
+                            `⚠️ Skipping edit: start line ${startLine} > end line ${actualEndLine}`);
+                        continue;
                     }
 
                     // Replace lines (1-indexed to 0-indexed)
                     const newLines = newContent.split('\n');
-                    lines.splice(startLine - 1, endLine - startLine + 1, ...newLines);
+                    lines.splice(startLine - 1, actualEndLine - startLine + 1, ...newLines);
                 }
 
                 // IMPORTANT: Save edits to Project Storage (single source of truth)
@@ -779,6 +887,19 @@ export class AgentCore {
             case 'register_composition': {
                 const { componentName, importPath, durationInFrames, fps = 30, width = 1920, height = 1080 } = args;
 
+                // ═══════════════════════════════════════════════════════════════
+                // 🛡️ MANDATORY VALIDATION GATE - Block registration if code has errors
+                // ═══════════════════════════════════════════════════════════════
+                this.socketManager.emitAgentLog('info', '🔍 Running mandatory validation before registration...');
+                const validationResult = await this.executeTool('validate_syntax', {});
+                
+                if (validationResult.includes('❌') || validationResult.includes('VALIDATION ERRORS')) {
+                    const errorMsg = `❌ REGISTRATION BLOCKED: Code validation failed. Fix these errors first:\n\n${validationResult}\n\n⚠️ Call validate_syntax, fix the errors, then try register_composition again.`;
+                    this.socketManager.emitAgentLog('error', errorMsg);
+                    return errorMsg;
+                }
+                this.socketManager.emitAgentLog('success', '✅ Validation passed - proceeding with registration');
+
                 // Clean up the import path - remove ./, src/, and .tsx extension
                 // Agent may pass "src/Main" or "./src/Main" but files are directly in project folder
                 let cleanImportPath = importPath
@@ -840,62 +961,65 @@ export class AgentCore {
                     ? `@projects/${this.currentProjectId}/${cleanImportPath}`
                     : cleanImportPath;
 
-                // 1. Update Root.tsx in remotion-core
-                const rootPath = path.join(this.REMOTION_ROOT, 'src/Root.tsx');
-                let rootContent = await fs.readFile(rootPath, 'utf-8');
-
                 const aliasName = this.currentProjectId
                     ? `${actualExportName}_${this.currentProjectId.split('-')[0]}`
                     : actualExportName;
 
-                // USE actualExportName (detected) instead of componentName (agent-provided)
-                const importStatement = `import { ${actualExportName} as ${aliasName} } from '${actualImportPath}';`;
-
-                // Remove any EXISTING import for this specific alias to prevent duplicates/conflicts
-                const importLines = rootContent.split('\n');
-                const filteredLines = importLines.filter(line => !line.includes(`as ${aliasName}`) && !line.includes(`'${actualImportPath}'`));
-
-                // Add new import at the top (after other imports)
-                const lastImportIndex = filteredLines.reduce((acc, line, idx) => line.startsWith('import') ? idx : acc, 0);
-                filteredLines.splice(lastImportIndex + 1, 0, importStatement);
-                let newRootContent = filteredLines.join('\n');
-
-                // 2. Add/Update Composition Block (using actualExportName, not componentName)
                 const compositionId = this.currentProjectId ? `${this.currentProjectId}:${actualExportName}` : actualExportName;
-                const compositionBlock = `        <Composition
-            id="${compositionId}"
-            component={${aliasName}}
-            durationInFrames={${durationInFrames}}
-            fps={${fps}}
-            width={${width}}
-            height={${height}}
-        />`;
 
-                // If composition with this ID exists, replace it, otherwise append before the closing fragment
-                if (newRootContent.includes(`id="${compositionId}"`)) {
-                    const regex = new RegExp(`<Composition\\s+id="${compositionId}"[\\s\\S]*?/>`, 'm');
-                    newRootContent = newRootContent.replace(regex, compositionBlock);
-                } else {
-                    newRootContent = newRootContent.replace(/(\s*)<\/(\s*)>/, `\n${compositionBlock}\n$1</>`);
-                }
+                // 1. Update Root.tsx - CLEAN APPROACH: Only keep current project, remove old ones
+                // This prevents accumulation of broken old projects that block compilation
+                const rootPath = path.join(this.REMOTION_ROOT, 'src/Root.tsx');
+                const cleanRootContent = `import React from 'react';
+import { Composition } from 'remotion';
+import { CurrentComposition } from './index';
+import { ${actualExportName} as ${aliasName} } from '${actualImportPath}';
 
-                await fs.writeFile(rootPath, newRootContent, 'utf-8');
+/**
+ * Root component for Remotion.
+ * The Director Agent dynamically updates this file using register_composition tool.
+ * Only the CURRENT project is imported to prevent old broken projects from blocking compilation.
+ */
+export const RemotionRoot: React.FC = () => {
+    return (
+        <>
+            {/* Default placeholder composition - shows current preview */}
+            <Composition
+                id="Default"
+                component={CurrentComposition}
+                durationInFrames={${durationInFrames}}
+                fps={${fps}}
+                width={1920}
+                height={1080}
+            />
+            {/* Current project composition */}
+            <Composition
+                id="${compositionId}"
+                component={${aliasName}}
+                durationInFrames={${durationInFrames}}
+                fps={${fps}}
+                width={${width}}
+                height={${height}}
+            />
+        </>
+    );
+};
+`;
 
-                // 3. Update PreviewEntry.tsx (using actualExportName)
-                const previewPath = path.join(this.REMOTION_ROOT, 'src/PreviewEntry.tsx');
-                const previewContent = `import { ${actualExportName} as CurrentComp } from '${actualImportPath}';\n\nexport const CurrentComposition = CurrentComp;\nexport const currentProps = {};\n`;
-                await fs.writeFile(previewPath, previewContent, 'utf-8');
+                await fs.writeFile(rootPath, cleanRootContent, 'utf-8');
+
+                // 3. DELAY PreviewEntry.tsx update - store for later when agent completes
+                // This prevents broken previews during generation
+                this.pendingPreview = {
+                    actualExportName,
+                    actualImportPath
+                };
+                this.socketManager.emitAgentLog('info', '📋 Preview queued - will be activated when generation completes');
 
                 // Note: No sync needed - projects folder IS the source of truth
+                // Note: We do NOT emit composition_registered here anymore - preview:ready will be emitted on completion
 
-                this.socketManager.emit('project:update', {
-                    type: 'composition_registered',
-                    componentName: actualExportName,
-                    aliasName,
-                    timestamp: Date.now()
-                });
-
-                return `🎬 Successfully registered: ${actualExportName} (Aliased as ${aliasName})\n- Path: ${actualImportPath}`;
+                return `🎬 Successfully registered: ${actualExportName} (Aliased as ${aliasName})\n- Path: ${actualImportPath}\n- Preview will be available when generation completes.`;
             }
 
             case 'validate_syntax': {

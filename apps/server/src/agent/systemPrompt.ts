@@ -828,10 +828,17 @@ Use \`staticFile()\` to reference audio from your project:
 ### ParticleField - Ambient particles
 \`\`\`tsx
 <ParticleField
-  preset="dust"           // stars, dust, snow, rain, fireflies, bubbles, confetti, sparks, embers, bokeh
+  preset="dust"           // stars, dust, snow, rain, fireflies, bubbles, confetti, sparks, embers, bokeh, tech, cyber, matrix
   count={50}
+  colors={['#ffffff', '#00ff88']}  // MUST use 'colors' (plural), NOT 'color'
   speed={0.5}
+  sizeRange={[1, 4]}
+  direction={90}
+  drift={true}
   glow={true}
+  glowIntensity={0.5}
+  shape="circle"          // circle, square, star, line
+  parallax={true}
 />
 \`\`\`
 
@@ -842,6 +849,29 @@ Use \`staticFile()\` to reference audio from your project:
   colors={['#0a0a0f', '#1a1025', '#6366f1']}
   animated={true}
 />
+\`\`\`
+
+### PALETTES - Color Presets (IMPORTANT)
+\`\`\`tsx
+// Available palettes: DARK, TECH, LUXURY, VIBRANT, CLEAN, WARM, COOL
+// Structure: PALETTES.[NAME].bg.primary, PALETTES.[NAME].accent.primary, etc.
+
+import { PALETTES } from '@components';
+
+// CORRECT usage:
+const bgColor = PALETTES.TECH.bg.primary;        // '#000000'
+const accentColor = PALETTES.TECH.accent.primary; // '#00ff88'
+const textColor = PALETTES.TECH.text.primary;     // '#ffffff'
+
+// WRONG - these do NOT exist:
+// PALETTES.cyberpunk.primary  ❌
+// PALETTES.tech.primary       ❌ (lowercase)
+// PALETTES.TECH.primary       ❌ (missing .bg or .accent)
+
+// Each palette has:
+// - bg: { primary, secondary, tertiary }
+// - accent: { primary, secondary, glow }
+// - text: { primary, secondary, muted }
 \`\`\`
 
 ---
@@ -1182,6 +1212,34 @@ fetch_audio: { type: "ambience", mood: "tech" }
 8. **NO useFrame()** - Only useCurrentFrame() for Three.js
 9. **NO SKIPPING VALIDATION** - Always call validate_syntax before register_composition
 10. **NO DEPLOYING WITH ERRORS** - Fix all validation errors first
+11. **NO MISMATCHED JSX TAGS** - Every opening tag MUST have matching closing tag
+12. **NO WRONG PROP NAMES** - Use 'colors' not 'color' for ParticleField
+
+## ⚠️ JSX STRUCTURE RULES (CRITICAL)
+
+When writing JSX, ALWAYS ensure:
+- Every \`<Component>\` has a matching \`</Component>\`
+- Nested components are properly closed in reverse order
+- Self-closing tags use \`/>\` syntax: \`<Component prop={value} />\`
+- Props are inside the opening tag, NOT floating outside
+
+Example of CORRECT structure:
+\`\`\`tsx
+<AbsoluteFill>
+  <Sequence from={0} durationInFrames={60}>
+    <KineticText text="Hello" />
+  </Sequence>
+</AbsoluteFill>
+\`\`\`
+
+Example of WRONG structure (DO NOT DO THIS):
+\`\`\`tsx
+<AbsoluteFill>
+  <Sequence from={0} durationInFrames={60}>
+    <KineticText text="Hello" />
+  </AbsoluteFill>  // ❌ Wrong closing tag!
+</Sequence>
+\`\`\`
 
 ## ⚙️ REACT 18 COMPATIBILITY
 

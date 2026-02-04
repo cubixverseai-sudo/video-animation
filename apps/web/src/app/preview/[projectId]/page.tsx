@@ -32,12 +32,10 @@ export default function IsolatedPreview() {
     useEffect(() => {
         if (!socket) return;
 
-        const handleProjectUpdate = (payload: any) => {
-            if (payload?.type === 'composition_registered') {
-                // A brand-new composition for this project was wired up.
-                // Bump the key so the Player remounts with the new component.
-                setCompositionVersion(prev => prev + 1);
-            }
+        const handlePreviewReady = () => {
+            // Preview is ready - the composition has been validated and PreviewEntry.tsx updated
+            // Bump the key so the Player remounts with the new component.
+            setCompositionVersion(prev => prev + 1);
         };
 
         const handleAgentComplete = (payload: any) => {
@@ -48,11 +46,13 @@ export default function IsolatedPreview() {
             }
         };
 
-        socket.on('project:update', handleProjectUpdate);
+        // Listen for preview:ready instead of composition_registered
+        // This ensures we only remount when the preview is actually safe to display
+        socket.on('preview:ready', handlePreviewReady);
         socket.on('agent:complete', handleAgentComplete);
 
         return () => {
-            socket.off('project:update', handleProjectUpdate);
+            socket.off('preview:ready', handlePreviewReady);
             socket.off('agent:complete', handleAgentComplete);
         };
     }, [socket]);
