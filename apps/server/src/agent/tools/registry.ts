@@ -509,6 +509,88 @@ export const TOOLS = [
             properties: {},
             required: []
         }
+    },
+
+    // ═══════════════════════════════════════════════════════════════
+    // 📋 PROJECT PLAN SYSTEM (PLAN.md)
+    // ═══════════════════════════════════════════════════════════════
+    {
+        name: "create_project_plan",
+        description: "Create PLAN.md - MUST be called FIRST before any other tool. Defines file structure, scenes timeline, and audio plan. This creates a modular project structure with scenes/ folder.",
+        parameters: {
+            type: "OBJECT",
+            properties: {
+                scenes: {
+                    type: "ARRAY",
+                    description: "Array of scene definitions",
+                    items: {
+                        type: "OBJECT",
+                        properties: {
+                            name: { type: "STRING", description: "Scene name (e.g., 'IntroScene')" },
+                            fileName: { type: "STRING", description: "File path (e.g., 'scenes/IntroScene.tsx')" },
+                            startFrame: { type: "NUMBER", description: "Start frame" },
+                            endFrame: { type: "NUMBER", description: "End frame" },
+                            description: { type: "STRING", description: "Scene description" }
+                        },
+                        required: ["name", "fileName", "startFrame", "endFrame"]
+                    }
+                },
+                bgmDecision: {
+                    type: "OBJECT",
+                    description: "Background music decision",
+                    properties: {
+                        needed: { type: "BOOLEAN", description: "Whether BGM is needed" },
+                        reason: { type: "STRING", description: "Reason for the decision" },
+                        mood: { type: "STRING", description: "BGM mood if needed" }
+                    },
+                    required: ["needed", "reason"]
+                },
+                sfxPlan: {
+                    type: "ARRAY",
+                    description: "Sound effects plan - MANDATORY for every scene transition",
+                    items: {
+                        type: "OBJECT",
+                        properties: {
+                            frame: { type: "NUMBER", description: "Frame number for SFX" },
+                            type: { type: "STRING", description: "SFX type: whoosh, impact, transition, reveal, rise, etc." },
+                            scene: { type: "STRING", description: "Which scene this SFX belongs to" }
+                        },
+                        required: ["frame", "type", "scene"]
+                    }
+                },
+                duration: { type: "NUMBER", description: "Total duration in frames" },
+                fps: { type: "NUMBER", description: "Frames per second (default: 30)" }
+            },
+            required: ["scenes", "sfxPlan"]
+        }
+    },
+    {
+        name: "update_project_plan",
+        description: "Update PLAN.md with progress, audio files, or logs. Call this after completing each step.",
+        parameters: {
+            type: "OBJECT",
+            properties: {
+                section: { 
+                    type: "STRING", 
+                    enum: ["progress", "audio", "files", "log"],
+                    description: "Section to update: progress (checkboxes), audio (file paths), files (status), log (add entry)"
+                },
+                data: { 
+                    type: "OBJECT", 
+                    description: "Update data - varies by section type"
+                }
+            },
+            required: ["section", "data"]
+        }
+    },
+    {
+        name: "read_project_plan",
+        description: "Read current PLAN.md to stay on track. Call this before writing any file to ensure you follow the plan.",
+        parameters: {
+            type: "OBJECT",
+            properties: {},
+            required: []
+        }
     }
 ];
 
@@ -637,3 +719,36 @@ export const SearchMemorySchema = z.object({
 });
 
 export const GetMemoryStatsSchema = z.object({});
+
+// ═══════════════════════════════════════════════════════════════
+// 📋 PROJECT PLAN SYSTEM SCHEMAS
+// ═══════════════════════════════════════════════════════════════
+
+export const CreateProjectPlanSchema = z.object({
+    scenes: z.array(z.object({
+        name: z.string(),
+        fileName: z.string(),
+        startFrame: z.number(),
+        endFrame: z.number(),
+        description: z.string().optional()
+    })),
+    bgmDecision: z.object({
+        needed: z.boolean(),
+        reason: z.string(),
+        mood: z.string().optional()
+    }).optional(),
+    sfxPlan: z.array(z.object({
+        frame: z.number(),
+        type: z.string(),
+        scene: z.string()
+    })),
+    duration: z.number().optional(),
+    fps: z.number().optional().default(30)
+});
+
+export const UpdateProjectPlanSchema = z.object({
+    section: z.enum(['progress', 'audio', 'files', 'log']),
+    data: z.record(z.any())
+});
+
+export const ReadProjectPlanSchema = z.object({});

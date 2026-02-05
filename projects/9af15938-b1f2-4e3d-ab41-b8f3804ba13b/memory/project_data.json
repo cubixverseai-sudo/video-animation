@@ -1,0 +1,14 @@
+{
+  "files": [
+    "PLAN.md",
+    "components/Backgrounds.tsx",
+    "components/TextAnimations.tsx",
+    "scenes/GlitchScene.tsx",
+    "scenes/ExplosionScene.tsx",
+    "scenes/RevealScene.tsx",
+    "Main.tsx"
+  ],
+  "decisions": [],
+  "styleDNA": {},
+  "lastUpdated": 1770285326292
+}

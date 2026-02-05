@@ -17,9 +17,13 @@ import { useSocket } from '@/providers/SocketProvider';
 import { useAgentStore, LogEntry } from '@/stores/agentStore';
 import { StepIndicator } from './StepIndicator';
 import { ErrorDisplay } from './ErrorDisplay';
+import { PlanViewer } from '../PlanViewer';
+import { useParams } from 'next/navigation';
 
 export function ConsoleContainer() {
     const { socket } = useSocket();
+    const params = useParams();
+    const projectId = params?.projectId as string | null;
     const {
         logs,
         addLog,
@@ -37,6 +41,7 @@ export function ConsoleContainer() {
 
     // Resizable sidebar logic
     const [width, setWidth] = useState(400);
+    const [showPlan, setShowPlan] = useState(true);
     const [isResizing, setIsResizing] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -175,6 +180,15 @@ export function ConsoleContainer() {
                     <StepIndicator steps={steps} currentStep={currentStep} className="mb-2" />
                     <ErrorDisplay errors={errors} onDismiss={removeError} />
                 </div>
+            </div>
+
+            {/* Project Plan Viewer */}
+            <div className="flex-shrink-0 border-b border-[#1F1F1F] p-3">
+                <PlanViewer 
+                    projectId={projectId} 
+                    isExpanded={showPlan}
+                    onToggle={() => setShowPlan(!showPlan)}
+                />
             </div>
 
             {/* Logs Stream */}

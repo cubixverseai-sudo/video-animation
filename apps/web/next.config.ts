@@ -12,12 +12,20 @@ const nextConfig: NextConfig = {
             bodySizeLimit: '10mb',
         },
     },
+    // Serve audio files from projects folder via API route
+    async rewrites() {
+        return [
+            {
+                source: '/assets/:projectId/audio/:path*',
+                destination: '/api/audio/:projectId/:path*',
+            },
+        ];
+    },
     webpack: (config) => {
-        // Add path aliases for projects and components (single source of truth architecture)
+        // Add path aliases for projects
         config.resolve.alias = {
             ...config.resolve.alias,
             '@projects': path.resolve(__dirname, '../../projects'),
-            '@components': path.resolve(__dirname, '../../packages/remotion-core/src/components'),
         };
         return config;
     },

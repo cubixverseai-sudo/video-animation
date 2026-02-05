@@ -95,4 +95,25 @@ router.post('/:id/assets', upload.single('asset'), async (req, res) => {
     }
 });
 
+// GET /projects/:id/plan - Get project PLAN.md
+router.get('/:id/plan', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const planContent = await projectManager.getProjectPlan(id);
+        
+        if (!planContent) {
+            return res.status(404).json({ error: 'Plan not found', message: 'No PLAN.md exists for this project yet.' });
+        }
+        
+        res.json({ 
+            projectId: id,
+            plan: planContent,
+            updatedAt: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('Failed to get project plan:', error);
+        res.status(500).json({ error: 'Failed to get project plan' });
+    }
+});
+
 export default router;

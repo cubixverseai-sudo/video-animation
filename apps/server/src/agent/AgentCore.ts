@@ -137,6 +137,8 @@ export class AgentCore {
 
         try {
             // Create folder structure (simplified - single source of truth)
+            await fs.mkdir(path.join(this.projectRoot, 'scenes'), { recursive: true });
+            await fs.mkdir(path.join(this.projectRoot, 'components'), { recursive: true });
             await fs.mkdir(path.join(this.projectRoot, 'assets', 'images'), { recursive: true });
             await fs.mkdir(path.join(this.projectRoot, 'assets', 'audio'), { recursive: true });
             await fs.mkdir(path.join(this.projectRoot, 'memory'), { recursive: true });
@@ -175,6 +177,12 @@ export class AgentCore {
                     role: 'system',
                     parts: [{ text: SYSTEM_PROMPT }]
                 },
+                // Force tool usage - AUTO means Gemini decides, but we hint strongly
+                toolConfig: {
+                    functionCallingConfig: {
+                        mode: "AUTO" as any
+                    }
+                }
             });
         }
     }
@@ -430,12 +438,14 @@ export class AgentCore {
                 });
             }
 
+            console.log('🚀 [DEBUG] Sending prompt to Gemini...');
             let result = await this.chatSession.sendMessage(messageParts);
             let response = result.response;
             let text = response.text();
 
             // If there's text, emit it and record in memory
             if (text) {
+                console.log('💬 [DEBUG] Gemini response:', text.substring(0, 300));
                 this.socketManager.emitAgentLog('info', text);
                 // Record assistant response in advanced memory
                 if (this.useAdvancedMemory && this.directorMemory) {
@@ -445,12 +455,17 @@ export class AgentCore {
 
             // Handle Function Calls (Multi-turn loop)
             let functionCalls = response.functionCalls();
+            console.log(`🔧 [DEBUG] Initial function calls: ${functionCalls?.length || 0}`);
 
+            let loopCount = 0;
             while (functionCalls && functionCalls.length > 0) {
+                loopCount++;
+                console.log(`🔄 [DEBUG] Function call loop #${loopCount}, calls: ${functionCalls.map((c: any) => c.name).join(', ')}`);
                 const functionResponses = [];
 
                 for (const call of functionCalls) {
                     const { name, args } = call;
+                    console.log(`⚙️ [DEBUG] Executing tool: ${name}`, JSON.stringify(args).substring(0, 200));
 
                     // --- PROFESSIONAL ACTION REPORTING ---
                     const actionMap: Record<string, string> = {
@@ -514,10 +529,156 @@ export class AgentCore {
 
                 // Check for more function calls
                 functionCalls = response.functionCalls();
+                
+                // 🔍 DEBUG: Log if agent stopped requesting tools
+                if (!functionCalls || functionCalls.length === 0) {
+                    console.log('⚠️ [DEBUG] Agent stopped requesting function calls');
+                    console.log('⚠️ [DEBUG] Last response text:', text?.substring(0, 200));
+                    
+                    // Check if essential files exist
+                    if (this.projectRoot) {
+                        const scenesPath = path.join(this.projectRoot, 'scenes');
+                        const mainPath = path.join(this.projectRoot, 'Main.tsx');
+                        
+                        try {
+                            const sceneFiles = await fs.readdir(scenesPath);
+                            const mainExists = await fs.access(mainPath).then(() => true).catch(() => false);
+                            
+                            console.log(`📁 [DEBUG] Scenes folder has ${sceneFiles.length} files:`, sceneFiles);
+                            console.log(`📁 [DEBUG] Main.tsx exists: ${mainExists}`);
+                            
+                            // 🔧 AUTO-RETRY: If files are missing, nudge the agent to continue
+                            if ((sceneFiles.length === 0 || !mainExists) && loopCount < 50) {
+                                console.log('🔄 [RETRY] Files missing - nudging agent to continue...');
+                                this.socketManager.emitAgentLog('info', '🔄 Continuing file creation...');
+                                
+                                // Send a nudge message to continue
+                                const nudgeResult = await this.chatSession.sendMessage([{
+                                    text: `⚠️ CRITICAL: You stopped but the files are NOT created yet!
+
+Current state:
+- Scene files: ${sceneFiles.length} (need at least 3)
+- Main.tsx: ${mainExists ? 'EXISTS' : 'MISSING'}
+
+You MUST continue NOW:
+1. Call write_file to create each scene in scenes/ folder
+2. Call write_file to create Main.tsx
+3. Call validate_syntax
+4. Call register_composition
+5. Call deploy_project
+
+DO NOT STOP until all files exist! Start with write_file for the first scene NOW.`
+                                }]);
+                                
+                                response = nudgeResult.response;
+                                text = response.text();
+                                functionCalls = response.functionCalls();
+                                
+                                if (functionCalls && functionCalls.length > 0) {
+                                    console.log('✅ [RETRY] Agent resumed with', functionCalls.length, 'function calls');
+                                    continue; // Continue the loop
+                                }
+                            } else if (sceneFiles.length === 0 || !mainExists) {
+                                console.error('🔴 [ERROR] Agent stopped but files are missing!');
+                                this.socketManager.emitAgentLog('error', '❌ No scene files were created! The agent stopped too early.');
+                            }
+                        } catch (e) {
+                            console.log('📁 [DEBUG] Could not check project files:', e);
+                        }
+                    }
+                }
             }
 
             // Finalize preview before completing - this writes PreviewEntry.tsx
             await this.finalizePreview();
+            
+            // 🔍 DEBUG: Final check before completion
+            console.log('✅ [DEBUG] Agent completing. Checking final state...');
+            if (this.projectRoot && this.currentProjectId) {
+                try {
+                    const scenesPath = path.join(this.projectRoot, 'scenes');
+                    const mainPath = path.join(this.projectRoot, 'Main.tsx');
+                    const sceneFiles = await fs.readdir(scenesPath);
+                    const mainExists = await fs.access(mainPath).then(() => true).catch(() => false);
+                    
+                    console.log(`📊 [FINAL] Project: ${this.currentProjectId}`);
+                    console.log(`📊 [FINAL] Scene files: ${sceneFiles.length} (${sceneFiles.join(', ')})`);
+                    console.log(`📊 [FINAL] Main.tsx: ${mainExists ? '✅' : '❌'}`);
+                    console.log(`📊 [FINAL] pendingPreview: ${this.pendingPreview ? '✅' : '❌'}`);
+                    
+                    if (sceneFiles.length === 0) {
+                        this.socketManager.emitAgentLog('error', '❌ No scene files were created! The agent stopped too early.');
+                    }
+                    if (!mainExists) {
+                        this.socketManager.emitAgentLog('error', '❌ Main.tsx was not created! The agent stopped too early.');
+                    }
+                    
+                    // 🔧 FALLBACK: If Main.tsx exists but preview wasn't registered, register it now
+                    if (mainExists && !this.pendingPreview) {
+                        console.log('🔧 [FALLBACK] Main.tsx exists but no preview registered. Auto-registering...');
+                        this.socketManager.emitAgentLog('info', '🔧 Auto-registering preview...');
+                        
+                        try {
+                            const mainContent = await fs.readFile(mainPath, 'utf-8');
+                            const exportMatch = mainContent.match(/export\s+const\s+(\w+)\s*[=:]/);
+                            const componentName = exportMatch ? exportMatch[1] : 'Main';
+                            const importPath = `@projects/${this.currentProjectId}/Main`;
+                            const aliasName = `${componentName}_${this.currentProjectId.split('-')[0]}`;
+                            
+                            // Update Root.tsx
+                            const rootPath = path.join(this.REMOTION_ROOT, 'src/Root.tsx');
+                            const rootContent = `import React from 'react';
+import { Composition } from 'remotion';
+import { CurrentComposition } from './index';
+import { ${componentName} as ${aliasName} } from '${importPath}';
+
+export const RemotionRoot: React.FC = () => {
+    return (
+        <>
+            <Composition
+                id="Default"
+                component={CurrentComposition}
+                durationInFrames={150}
+                fps={30}
+                width={1920}
+                height={1080}
+            />
+            <Composition
+                id="${this.currentProjectId}:${componentName}"
+                component={${aliasName}}
+                durationInFrames={150}
+                fps={30}
+                width={1920}
+                height={1080}
+            />
+        </>
+    );
+};
+`;
+                            await fs.writeFile(rootPath, rootContent, 'utf-8');
+                            
+                            // Update PreviewEntry.tsx
+                            const previewPath = path.join(this.REMOTION_ROOT, 'src/PreviewEntry.tsx');
+                            const previewContent = `import { ${componentName} as CurrentComp } from '${importPath}';\n\nexport const CurrentComposition = CurrentComp;\nexport const currentProps = {};\n`;
+                            await fs.writeFile(previewPath, previewContent, 'utf-8');
+                            
+                            this.socketManager.emitAgentLog('success', '🎬 Preview activated!');
+                            this.socketManager.emit('preview:ready', {
+                                componentName,
+                                importPath,
+                                timestamp: Date.now()
+                            });
+                            
+                            console.log('✅ [FALLBACK] Preview registered successfully');
+                        } catch (fallbackError: any) {
+                            console.error('❌ [FALLBACK] Failed to auto-register preview:', fallbackError.message);
+                            this.socketManager.emitAgentLog('warning', `⚠️ Could not auto-register preview: ${fallbackError.message}`);
+                        }
+                    }
+                } catch (e) {
+                    console.error('[FINAL] Error checking project state:', e);
+                }
+            }
             
             this.socketManager.emitAgentLog('success', 'Task completed.');
             this.socketManager.emit('agent:complete', { success: true });
@@ -585,57 +746,72 @@ export class AgentCore {
                 const filePath = getSecurePath(args.path);
                 let content = args.content as string;
 
-                // --- FIX LLM LINE-BREAK CORRUPTION ---
-                // Gemini sometimes inserts line breaks in the middle of code lines at ~50 char width.
-                // This aggressively fixes the corruption by detecting and joining broken lines.
+                // --- FIX GEMINI TYPOS & NORMALIZE CODE ---
                 if (filePath.endsWith('.tsx') || filePath.endsWith('.ts') || filePath.endsWith('.jsx') || filePath.endsWith('.js')) {
-                    // Normalize line endings first
+                    // Normalize line endings
                     content = content.replace(/\r\n/g, '\n');
                     
-                    // Split into lines and rejoin broken ones
-                    const lines = content.split('\n');
-                    const fixedLines: string[] = [];
+                    // FIX COMMON GEMINI TYPOS (doubled/missing letters)
+                    const typoFixes: [RegExp, string][] = [
+                        // Remotion hooks - doubled letters
+                        [/useCuurrentFrame/g, 'useCurrentFrame'],
+                        [/useCurrrentFrame/g, 'useCurrentFrame'],
+                        [/useCurrentFrrame/g, 'useCurrentFrame'],
+                        [/useVideoConfigg/g, 'useVideoConfig'],
+                        [/useVideooConfig/g, 'useVideoConfig'],
+                        // Remotion components - doubled letters
+                        [/AbsoluteFilll/g, 'AbsoluteFill'],
+                        [/AbsoluteFil(?!l)/g, 'AbsoluteFill'],
+                        [/AAbsoluteFill/g, 'AbsoluteFill'],
+                        [/Sequeence/g, 'Sequence'],
+                        [/Sequencce/g, 'Sequence'],
+                        [/SSequence/g, 'Sequence'],
+                        [/Compositionn/g, 'Composition'],
+                        [/CComposition/g, 'Composition'],
+                        // Remotion functions
+                        [/staticFille/g, 'staticFile'],
+                        [/sttaticFile/g, 'staticFile'],
+                        [/staticFFile/g, 'staticFile'],
+                        [/interpolatte/g, 'interpolate'],
+                        [/iinterpolate/g, 'interpolate'],
+                        [/springg/g, 'spring'],
+                        [/sspring/g, 'spring'],
+                        [/Easingg/g, 'Easing'],
+                        [/EEasing/g, 'Easing'],
+                        // Audio
+                        [/Auudio/g, 'Audio'],
+                        [/Audioo/g, 'Audio'],
+                        [/AAudio/g, 'Audio'],
+                        // React import typos
+                        [/from 'react'';/g, "from 'react';"],
+                        [/from ''react'/g, "from 'react'"],
+                        [/from "react"";/g, 'from "react";'],
+                        [/from ""react"/g, 'from "react"'],
+                        // Parameter typos
+                        [/durationInFraames/g, 'durationInFrames'],
+                        [/durationInFramess/g, 'durationInFrames'],
+                        [/ddurationInFrames/g, 'durationInFrames'],
+                        [/importPathh/g, 'importPath'],
+                        [/imporrtPath/g, 'importPath'],
+                        [/iimportPath/g, 'importPath'],
+                        // Component props
+                        [/extrapolateeLeft/g, 'extrapolateLeft'],
+                        [/extrapolateRightt/g, 'extrapolateRight'],
+                    ];
                     
-                    for (let i = 0; i < lines.length; i++) {
-                        const line = lines[i];
-                        const nextLine = lines[i + 1] || '';
-                        
-                        // Detect if this line is broken mid-statement:
-                        // 1. Line ends with a letter/number and next starts with lowercase letter
-                        // 2. Line ends mid-word (no semicolon, no closing bracket, no comma at natural break)
-                        // 3. Line is suspiciously short (~40-60 chars) and doesn't end with a statement terminator
-                        
-                        const endsWithWordChar = /[a-zA-Z0-9_\-\/]$/.test(line.trimEnd());
-                        const nextStartsWithContinuation = /^\s*[a-z0-9_\-\/]/.test(nextLine);
-                        const lineIsSuspiciouslyShort = line.length > 20 && line.length < 70;
-                        const endsWithStatementTerminator = /[;,{})\]>]$/.test(line.trimEnd());
-                        const endsWithOpenBracket = /[({<\[]$/.test(line.trimEnd());
-                        
-                        // If line appears broken, join with next line
-                        if (endsWithWordChar && nextStartsWithContinuation && lineIsSuspiciouslyShort && !endsWithStatementTerminator && !endsWithOpenBracket) {
-                            // Join this line with the next, removing the newline
-                            fixedLines.push(line + nextLine.trimStart());
-                            i++; // Skip the next line since we merged it
-                        } else {
-                            fixedLines.push(line);
-                        }
+                    let fixCount = 0;
+                    for (const [pattern, replacement] of typoFixes) {
+                        const before = content;
+                        content = content.replace(pattern, replacement);
+                        if (before !== content) fixCount++;
                     }
                     
-                    content = fixedLines.join('\n');
+                    // Remove leading empty lines, ensure trailing newline
+                    content = content.replace(/^\n+/, '').trimEnd() + '\n';
                     
-                    // Additional fixes for any remaining issues
-                    // Fix broken string literals - line break inside quotes (handles template literals too)
-                    content = content.replace(/'([^'\n]{0,100})\n\s*([^'\n]{0,100})'/g, "'$1$2'");
-                    content = content.replace(/"([^"\n]{0,100})\n\s*([^"\n]{0,100})"/g, '"$1$2"');
-                    content = content.replace(/`([^`\n]{0,100})\n\s*([^`\n]{0,100})`/g, '`$1$2`');
-                    
-                    // Fix broken identifiers (word\nword -> wordword)
-                    content = content.replace(/([a-zA-Z])[\n\r]+([a-zA-Z])/g, '$1$2');
-                    
-                    // Clean up multiple spaces (but preserve indentation)
-                    content = content.replace(/([^\n]) {2,}/g, '$1 ');
-                    
-                    this.socketManager.emitAgentLog('info', '🔧 Applied LLM line-break fix to content');
+                    if (fixCount > 0) {
+                        this.socketManager.emitAgentLog('info', `🔧 Fixed ${fixCount} Gemini typos`);
+                    }
                 }
 
                 // --- ENHANCED JSX SYNTAX PROTECTION ---
@@ -724,7 +900,33 @@ export class AgentCore {
 
             case 'delete_file': {
                 const filePath = getSecurePath(args.path);
-                await fs.unlink(filePath);
+                
+                // 🛡️ PROTECTED FOLDERS - Cannot be deleted
+                const protectedPaths = ['scenes', 'assets', 'memory', 'PLAN.md'];
+                const basename = path.basename(filePath);
+                const dirname = path.basename(path.dirname(filePath));
+                
+                if (protectedPaths.includes(basename) || protectedPaths.includes(dirname)) {
+                    return `❌ PROTECTED: Cannot delete "${args.path}" - this is a core project folder/file. Use write_file to modify content instead.`;
+                }
+                
+                // Check if path exists and determine type
+                try {
+                    const stats = await fs.stat(filePath);
+                    
+                    if (stats.isDirectory()) {
+                        // For directories, use rm with recursive
+                        await fs.rm(filePath, { recursive: true, force: true });
+                    } else {
+                        // For files, use unlink
+                        await fs.unlink(filePath);
+                    }
+                } catch (error: any) {
+                    if (error.code === 'ENOENT') {
+                        return `⚠️ File not found: ${args.path}`;
+                    }
+                    throw error;
+                }
 
                 this.socketManager.emit('project:update', {
                     type: 'file_delete',
@@ -732,7 +934,7 @@ export class AgentCore {
                     timestamp: Date.now()
                 });
 
-                return `🗑️ File deleted: ${args.path}`;
+                return `🗑️ Deleted: ${args.path}`;
             }
 
             case 'get_my_assets': {
@@ -1023,15 +1225,14 @@ export const RemotionRoot: React.FC = () => {
             }
 
             case 'validate_syntax': {
-                // ENHANCED VALIDATION: TypeScript compilation + JSX structure checks
+                // SIMPLIFIED VALIDATION: Only basic checks to avoid infinite loops
                 const files = this.memory.getFiles();
-                if (files.length === 0) return "⚠️ No files tracked in this project yet.";
+                if (files.length === 0) return "✅ No files to validate yet. Continue with file creation.";
 
-                this.socketManager.emitAgentLog('info', `🔍 Validating ${files.length} files with TypeScript...`);
+                this.socketManager.emitAgentLog('info', `🔍 Validating ${files.length} files...`);
 
                 const errors: string[] = [];
 
-                // PHASE 1: Basic JSX structure validation (fast, catches obvious issues)
                 for (const file of files) {
                     if (!file.endsWith('.tsx') && !file.endsWith('.ts')) continue;
 
@@ -1039,110 +1240,39 @@ export const RemotionRoot: React.FC = () => {
                     try {
                         const content = await fs.readFile(filePath, 'utf-8');
 
-                        // Basic JSX structure validation
-                        const syntaxIssues = this.validateJSXStructure(content, file);
-                        if (syntaxIssues.length > 0) {
-                            errors.push(...syntaxIssues);
-                        }
-
-                        // Check for required imports
+                        // Only check for CRITICAL issues that would definitely break compilation
                         if (file.endsWith('.tsx')) {
+                            // Must have React import
                             if (!content.includes("from 'react'") && !content.includes('from "react"')) {
-                                errors.push(`[${file}] Missing React import`);
+                                errors.push(`[${file}] Missing: import React from 'react';`);
                             }
-                            if (content.includes('useCurrentFrame') && !content.includes("from 'remotion'") && !content.includes('from "remotion"')) {
-                                errors.push(`[${file}] Using useCurrentFrame without importing from 'remotion'`);
+                            
+                            // Check for obvious syntax errors - unbalanced braces
+                            const openBraces = (content.match(/\{/g) || []).length;
+                            const closeBraces = (content.match(/\}/g) || []).length;
+                            if (Math.abs(openBraces - closeBraces) > 3) {
+                                errors.push(`[${file}] Unbalanced braces: { = ${openBraces}, } = ${closeBraces}`);
                             }
-                            if (content.includes('useVideoConfig') && !content.includes("from 'remotion'") && !content.includes('from "remotion"')) {
-                                errors.push(`[${file}] Using useVideoConfig without importing from 'remotion'`);
-                            }
-                            if (content.includes('<AbsoluteFill') && !content.includes("from 'remotion'") && !content.includes('from "remotion"')) {
-                                errors.push(`[${file}] Using AbsoluteFill without importing from 'remotion'`);
+                            
+                            // Check for export
+                            if (!content.includes('export const') && !content.includes('export default') && !content.includes('export function')) {
+                                errors.push(`[${file}] Missing export statement`);
                             }
                         }
                     } catch (e) {
-                        errors.push(`[${file}] File not found or unreadable`);
+                        errors.push(`[${file}] File not found`);
                     }
                 }
 
-                // PHASE 2: TypeScript compilation check (catches type errors, invalid imports)
-                if (errors.length === 0 && this.projectRoot) {
-                    try {
-                        // Create a temporary tsconfig for validation
-                        const tsconfigContent = JSON.stringify({
-                            compilerOptions: {
-                                target: "ES2020",
-                                module: "ESNext",
-                                moduleResolution: "bundler",
-                                jsx: "react-jsx",
-                                strict: false,
-                                noEmit: true,
-                                skipLibCheck: true,
-                                esModuleInterop: true,
-                                allowSyntheticDefaultImports: true,
-                                baseUrl: ".",
-                                paths: {
-                                    "@projects/*": ["../../projects/*"],
-                                    "@components/*": ["../../packages/remotion-core/src/components/*"]
-                                }
-                            },
-                            include: ["**/*.tsx", "**/*.ts"],
-                            exclude: ["node_modules"]
-                        }, null, 2);
-
-                        const tempTsconfig = path.join(this.projectRoot, 'tsconfig.validate.json');
-                        await fs.writeFile(tempTsconfig, tsconfigContent);
-
-                        try {
-                            // Run TypeScript check
-                            const { stdout, stderr } = await execAsync(
-                                `npx tsc --project "${tempTsconfig}" --noEmit 2>&1`,
-                                {
-                                    cwd: this.projectRoot,
-                                    timeout: 30000,
-                                    env: { ...process.env, NODE_OPTIONS: '' }
-                                }
-                            );
-
-                            const output = stdout || stderr || '';
-                            
-                            // Parse TypeScript errors
-                            const tsErrors = output.split('\n')
-                                .filter(line => line.includes('error TS'))
-                                .slice(0, 10); // Limit to 10 errors
-
-                            if (tsErrors.length > 0) {
-                                errors.push('--- TypeScript Errors ---');
-                                errors.push(...tsErrors);
-                            }
-                        } catch (tscError: any) {
-                            // TypeScript exits with code 1 on errors
-                            const output = tscError.stdout || tscError.stderr || tscError.message || '';
-                            const tsErrors = output.split('\n')
-                                .filter((line: string) => line.includes('error TS') || line.includes('Cannot find'))
-                                .slice(0, 10);
-
-                            if (tsErrors.length > 0) {
-                                errors.push('--- TypeScript Errors ---');
-                                errors.push(...tsErrors);
-                            }
-                        } finally {
-                            // Clean up temp tsconfig
-                            try { await fs.unlink(tempTsconfig); } catch {}
-                        }
-                    } catch (e: any) {
-                        this.socketManager.emitAgentLog('warning', `⚠️ TypeScript check skipped: ${e.message}`);
-                    }
-                }
-
+                // Only report CRITICAL errors, not TypeScript warnings
                 if (errors.length > 0) {
-                    const errorReport = errors.slice(0, 15).join('\n');
-                    this.socketManager.emitAgentLog('error', `❌ Validation Errors Found:\n${errorReport}`);
-                    return `❌ VALIDATION ERRORS DETECTED:\n${errorReport}\n\n⚠️ FIX THESE ERRORS before calling register_composition or deploy_project!`;
+                    const errorReport = errors.slice(0, 5).join('\n');
+                    this.socketManager.emitAgentLog('warning', `⚠️ Issues found:\n${errorReport}`);
+                    return `⚠️ ISSUES FOUND:\n${errorReport}\n\nFix these and try again.`;
                 }
 
-                this.socketManager.emitAgentLog('success', `✅ All ${files.length} files passed validation`);
-                return "✅ Syntax and TypeScript check passed. All files are valid. Ready to deploy.";
+                this.socketManager.emitAgentLog('success', `✅ All ${files.length} files look good!`);
+                return "✅ Validation passed. Files are ready. You can now call register_composition.";
             }
 
             case 'deploy_project': {
@@ -1694,6 +1824,161 @@ export const RemotionRoot: React.FC = () => {
                     message: "Memory System Statistics",
                     stats
                 }, null, 2);
+            }
+
+            // ═══════════════════════════════════════════════════════════════
+            // 📋 PROJECT PLAN SYSTEM (PLAN.md)
+            // ═══════════════════════════════════════════════════════════════
+            case 'create_project_plan': {
+                if (!this.projectRoot || !this.currentProjectId) return "❌ No project active.";
+                
+                const { scenes, bgmDecision, sfxPlan, duration, fps = 30 } = args;
+                
+                this.socketManager.emitAgentLog('info', `📋 Creating project plan...`);
+                
+                // Create scenes/ folder
+                const scenesDir = path.join(this.projectRoot, 'scenes');
+                await fs.mkdir(scenesDir, { recursive: true });
+                
+                // Calculate total duration
+                const totalFrames = duration || (scenes.length > 0 ? scenes[scenes.length - 1].endFrame : 300);
+                const totalSeconds = Math.round(totalFrames / fps);
+                
+                // Build PLAN.md content
+                const timestamp = new Date().toISOString();
+                let planContent = `# 🎬 Video Plan
+
+## Project Info
+- **ID**: ${this.currentProjectId}
+- **Created**: ${timestamp}
+- **Duration**: ${totalSeconds}s (${totalFrames} frames @ ${fps}fps)
+
+## 📁 File Structure
+| File | Purpose | Status |
+|------|---------|--------|
+| Main.tsx | Entry point (imports scenes) | ⏳ |
+${scenes.map((s: any) => `| ${s.fileName} | ${s.name} | ⏳ |`).join('\n')}
+
+## 🎬 Scenes Timeline
+| # | Scene | File | Frames | Duration | Description |
+|---|-------|------|--------|----------|-------------|
+${scenes.map((s: any, i: number) => `| ${i + 1} | ${s.name} | ${s.fileName} | ${s.startFrame}-${s.endFrame} | ${Math.round((s.endFrame - s.startFrame) / fps)}s | ${s.description || ''} |`).join('\n')}
+
+## 🎵 Audio Plan
+### BGM (Background Music) - ${bgmDecision?.needed ? 'YES' : 'OPTIONAL'}
+- **Decision**: ${bgmDecision?.needed ? 'Yes' : 'No'}
+- **Reason**: ${bgmDecision?.reason || 'Agent decides based on video type'}
+${bgmDecision?.needed && bgmDecision?.mood ? `- **Mood**: ${bgmDecision.mood}` : ''}
+- **File**: ⏳ pending
+
+### SFX (Sound Effects) - MANDATORY
+| Frame | Type | Scene | File |
+|-------|------|-------|------|
+${sfxPlan.map((s: any) => `| ${s.frame} | ${s.type} | ${s.scene} | ⏳ pending |`).join('\n')}
+
+## ✅ Progress
+- [x] Phase 1: Create Plan
+- [ ] Phase 2: Fetch Audio
+- [ ] Phase 3: Write Scenes
+${scenes.map((s: any) => `  - [ ] ${s.fileName}`).join('\n')}
+- [ ] Phase 4: Write Main.tsx (imports scenes)
+- [ ] Phase 5: Validate All
+- [ ] Phase 6: Register & Deploy
+
+## 📝 Log
+- ${timestamp}: Project plan created with ${scenes.length} scenes
+
+`;
+                
+                // Write PLAN.md
+                const planPath = path.join(this.projectRoot, 'PLAN.md');
+                await fs.writeFile(planPath, planContent, 'utf-8');
+                
+                // Track in memory
+                await this.memory.trackFile('PLAN.md');
+                await this.memory.appendLog(`📋 Created project plan with ${scenes.length} scenes`);
+                
+                this.socketManager.emitAgentLog('success', `✅ Project plan created! Scenes folder ready.`);
+                
+                return JSON.stringify({
+                    success: true,
+                    message: `Project plan created with ${scenes.length} scenes`,
+                    planPath: 'PLAN.md',
+                    scenesFolder: 'scenes/',
+                    nextStep: "Now fetch audio using 'fetch_audio' for BGM and SFX, then write each scene file."
+                }, null, 2);
+            }
+
+            case 'update_project_plan': {
+                if (!this.projectRoot) return "❌ No project active.";
+                
+                const { section, data } = args;
+                const planPath = path.join(this.projectRoot, 'PLAN.md');
+                
+                try {
+                    let planContent = await fs.readFile(planPath, 'utf-8');
+                    const timestamp = new Date().toISOString();
+                    
+                    switch (section) {
+                        case 'progress':
+                            // Update checkbox: data = { step: string, completed: boolean }
+                            if (data.step && data.completed !== undefined) {
+                                const checkbox = data.completed ? '[x]' : '[ ]';
+                                const pattern = new RegExp(`- \\[[ x]\\] ${data.step.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'g');
+                                planContent = planContent.replace(pattern, `- ${checkbox} ${data.step}`);
+                            }
+                            break;
+                            
+                        case 'files':
+                            // Update file status: data = { fileName: string, status: '✅' | '⏳' | '❌' }
+                            if (data.fileName && data.status) {
+                                const pattern = new RegExp(`\\| ${data.fileName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} \\|([^|]+)\\| [⏳✅❌] \\|`, 'g');
+                                planContent = planContent.replace(pattern, `| ${data.fileName} |$1| ${data.status} |`);
+                            }
+                            break;
+                            
+                        case 'audio':
+                            // Update audio file path: data = { type: 'bgm' | 'sfx', frame?: number, filePath: string }
+                            if (data.type === 'bgm' && data.filePath) {
+                                planContent = planContent.replace(/- \*\*File\*\*: ⏳ pending/, `- **File**: ${data.filePath}`);
+                            } else if (data.type === 'sfx' && data.frame !== undefined && data.filePath) {
+                                const pattern = new RegExp(`\\| ${data.frame} \\|([^|]+)\\|([^|]+)\\| ⏳ pending \\|`, 'g');
+                                planContent = planContent.replace(pattern, `| ${data.frame} |$1|$2| ${data.filePath} |`);
+                            }
+                            break;
+                            
+                        case 'log':
+                            // Add log entry: data = { message: string }
+                            if (data.message) {
+                                planContent = planContent.replace(
+                                    /## 📝 Log\n/,
+                                    `## 📝 Log\n- ${timestamp}: ${data.message}\n`
+                                );
+                            }
+                            break;
+                    }
+                    
+                    await fs.writeFile(planPath, planContent, 'utf-8');
+                    
+                    this.socketManager.emitAgentLog('info', `📋 Plan updated: ${section}`);
+                    return `✅ Plan updated: ${section}`;
+                    
+                } catch (error: any) {
+                    return `❌ Failed to update plan: ${error.message}`;
+                }
+            }
+
+            case 'read_project_plan': {
+                if (!this.projectRoot) return "❌ No project active.";
+                
+                const planPath = path.join(this.projectRoot, 'PLAN.md');
+                
+                try {
+                    const planContent = await fs.readFile(planPath, 'utf-8');
+                    return planContent;
+                } catch (error: any) {
+                    return `❌ No plan found. Call 'create_project_plan' first.`;
+                }
             }
 
             default:

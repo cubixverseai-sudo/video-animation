@@ -1,0 +1,14 @@
+{
+  "id": "9af15938-b1f2-4e3d-ab41-b8f3804ba13b",
+  "name": "Project 1",
+  "description": "Generated from: \"create video for platfrom netflix...\"",
+  "createdAt": "2026-02-05T09:54:23.571Z",
+  "updatedAt": "2026-02-05T09:54:23.571Z",
+  "status": "draft",
+  "settings": {
+    "fps": 30,
+    "duration": 150,
+    "width": 1920,
+    "height": 1080
+  }
+}

@@ -217,6 +217,20 @@ export class ProjectManager {
     getProjectPath(id: string): string {
         return path.join(PROJECTS_ROOT, id);
     }
+
+    /**
+     * Gets the PLAN.md content for a project.
+     * Returns null if no plan exists.
+     */
+    async getProjectPlan(id: string): Promise<string | null> {
+        try {
+            const planPath = path.join(PROJECTS_ROOT, id, 'PLAN.md');
+            const content = await fs.readFile(planPath, 'utf-8');
+            return content;
+        } catch (error) {
+            return null;
+        }
+    }
 }
 
 export const projectManager = new ProjectManager();

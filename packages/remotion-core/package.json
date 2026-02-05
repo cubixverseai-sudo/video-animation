@@ -7,9 +7,9 @@
   "exports": {
     ".": "./src/index.tsx"
   },
-  "dependencies": {
+  "peerDependencies": {
     "@remotion/cli": "4.0.410",
-    "@remotion/google-fonts": "^4.0.417",
+    "@remotion/google-fonts": "4.0.410",
     "@remotion/media": "4.0.410",
     "@remotion/noise": "4.0.410",
     "@remotion/paths": "4.0.410",
