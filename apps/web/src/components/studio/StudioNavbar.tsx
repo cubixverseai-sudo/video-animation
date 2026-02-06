@@ -2,44 +2,58 @@
 
 import { motion } from 'framer-motion';
 import { Play, Share2, Layers, Settings, Activity } from 'lucide-react';
-import { Button } from '@/components/shared/Button';
+import { ExportButton } from './live-preview/ExportButton';
+import { useProjectStore } from '@/stores/projectStore';
+import { useAgentStore } from '@/stores/agentStore';
 
-export function StudioNavbar() {
+interface StudioNavbarProps {
+    onExport?: (format: string, quality: string) => void;
+    isExporting?: boolean;
+    exportProgress?: number;
+    isPreviewReady?: boolean;
+}
+
+export function StudioNavbar({ onExport, isExporting = false, exportProgress = 0, isPreviewReady = false }: StudioNavbarProps) {
+    const { projectName } = useProjectStore();
+    const { isThinking } = useAgentStore();
+
     return (
-        <header className="h-14 border-b border-[#1F1F1F] bg-[#0A0A0A] flex items-center justify-between px-5 z-50">
+        <header className="h-14 bg-[#08080C] flex items-center justify-between px-5 z-50 relative animated-gradient-border">
             {/* Logo & Project Info */}
-            <div className="flex items-center gap-6">
-                <div className="flex items-center gap-2 group cursor-pointer">
-                    <div className="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20 group-hover:border-indigo-500/50 transition-colors">
-                        <Play className="w-3.5 h-3.5 text-indigo-400 fill-indigo-400/20" />
+            <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2.5 group cursor-pointer">
+                    <div className="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20 group-hover:border-indigo-500/40 transition-all group-hover:shadow-[0_0_12px_rgba(99,102,241,0.15)]">
+                        <Play className="w-3.5 h-3.5 text-indigo-400 fill-indigo-400/30" />
                     </div>
-                    <span className="font-bold text-sm tracking-widest text-gray-100 uppercase">Director.Studio</span>
+                    <span className="font-bold text-xs tracking-[0.2em] text-gray-300 uppercase">Director</span>
                 </div>
 
-                <div className="h-4 w-px bg-gray-800" />
+                <div className="h-4 w-px bg-[#1A1A24]" />
 
-                <div className="flex flex-col">
-                    <span className="text-[9px] text-gray-500 font-bold uppercase tracking-widest">Active Project</span>
-                    <span className="text-xs font-semibold text-gray-300">Nebula Cloud Launch</span>
+                <div className="flex flex-col leading-none">
+                    <span className="text-[10px] text-[#4A4A5A] font-semibold uppercase tracking-[0.15em]">Project</span>
+                    <span className="text-xs font-medium text-gray-400 mt-0.5 max-w-[200px] truncate">
+                        {projectName || 'Untitled Project'}
+                    </span>
                 </div>
             </div>
 
             {/* Center: Tools */}
             <nav className="hidden md:flex items-center justify-center absolute left-1/2 -translate-x-1/2">
-                <div className="flex items-center p-1 rounded-full border border-[#1F1F1F] bg-[#050505]/50 backdrop-blur-sm">
+                <div className="flex items-center gap-1 p-1 rounded-lg bg-[#0C0C12] border border-[#16161E]">
                     {[
                         { id: 'editor', icon: Layers, label: 'Editor', active: true },
-                        { id: 'assets', icon: Activity, label: 'Performance', active: false },
+                        { id: 'performance', icon: Activity, label: 'Performance', active: false },
                         { id: 'settings', icon: Settings, label: 'Settings', active: false },
                     ].map((item) => (
                         <button
                             key={item.id}
-                            className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-[11px] font-medium transition-all ${item.active
-                                ? 'bg-[#151515] text-white border border-[#2A2A2A] shadow-lg'
-                                : 'text-gray-500 hover:text-gray-300 hover:bg-white/5'
+                            className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-xs font-medium transition-all duration-200 ${item.active
+                                ? 'bg-[#16161E] text-gray-200 shadow-sm border border-[#22222E]'
+                                : 'text-[#555566] hover:text-gray-400 hover:bg-[#12121A]'
                                 }`}
                         >
-                            <item.icon className="w-3 h-3" />
+                            <item.icon className="w-3.5 h-3.5" />
                             {item.label}
                         </button>
                     ))}
@@ -47,21 +61,37 @@ export function StudioNavbar() {
             </nav>
 
             {/* Right: Actions */}
-            <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/5">
-                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-wider">Agent Live</span>
-                </div>
-
-                <Button
-                    variant="ghost"
-                    size="sm"
-                    className="hidden sm:flex text-xs h-8 text-gray-400 hover:text-white hover:bg-white/5 border border-transparent hover:border-white/10"
+            <div className="flex items-center gap-2.5">
+                {/* Agent Status */}
+                <motion.div
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-md border transition-colors ${
+                        isThinking
+                            ? 'border-indigo-500/20 bg-indigo-500/5'
+                            : 'border-emerald-500/15 bg-emerald-500/5'
+                    }`}
+                    animate={isThinking ? { borderColor: ['rgba(99,102,241,0.2)', 'rgba(99,102,241,0.4)', 'rgba(99,102,241,0.2)'] } : {}}
+                    transition={{ duration: 2, repeat: Infinity }}
                 >
-                    <Share2 className="w-3.5 h-3.5 mr-2" /> Share
-                </Button>
+                    <div className={`w-2 h-2 rounded-full ${isThinking ? 'bg-indigo-400 animate-pulse' : 'bg-emerald-400'}`} />
+                    <span className={`text-[11px] font-bold uppercase tracking-wider ${isThinking ? 'text-indigo-400' : 'text-emerald-400/80'}`}>
+                        {isThinking ? 'Working' : 'Live'}
+                    </span>
+                </motion.div>
+
+                {onExport && (
+                    <ExportButton
+                        onExport={onExport}
+                        disabled={!isPreviewReady}
+                        loading={isExporting}
+                        progress={exportProgress}
+                    />
+                )}
+
+                <button className="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium text-[#555566] hover:text-gray-300 hover:bg-[#12121A] border border-transparent hover:border-[#1E1E2A] transition-all">
+                    <Share2 className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Share</span>
+                </button>
             </div>
         </header>
     );
 }
-

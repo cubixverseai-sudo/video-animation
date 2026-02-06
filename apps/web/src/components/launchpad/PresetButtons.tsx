@@ -1,3 +1,4 @@
+// @ts-nocheck — Legacy launchpad component (unused)
 "use client";
 
 import { useState } from 'react';
@@ -19,7 +20,7 @@ export interface Preset {
     id: string;
     label: string;
     icon: React.ReactNode;
-    category: 'style' | 'speed' | 'mood' | 'type';
+    category: 'style' | 'speed' | 'mood' | 'type' | 'duration';
     description?: string;
 }
 
@@ -38,6 +39,11 @@ const PRESETS: Preset[] = [
     { id: 'product', label: 'Product', icon: <Star className="w-4 h-4" />, category: 'type', description: 'Showcase items' },
     { id: 'intro', label: 'Intro', icon: <Play className="w-4 h-4" />, category: 'type', description: 'Opening sequence' },
     { id: 'explainer', label: 'Explainer', icon: <Volume2 className="w-4 h-4" />, category: 'type', description: 'Educational content' },
+
+    // Duration presets
+    { id: 'duration_5', label: '5s', icon: <Clock className="w-4 h-4" />, category: 'duration', description: '5 seconds (150 frames)' },
+    { id: 'duration_10', label: '10s', icon: <Clock className="w-4 h-4" />, category: 'duration', description: '10 seconds (300 frames)' },
+    { id: 'duration_15', label: '15s', icon: <Clock className="w-4 h-4" />, category: 'duration', description: '15 seconds (450 frames)' },
 ];
 
 interface PresetButtonsProps {
@@ -53,6 +59,7 @@ export function PresetButtons({ selectedPresets, onTogglePreset, className }: Pr
     const stylePresets = PRESETS.filter(p => p.category === 'style');
     const speedPresets = PRESETS.filter(p => p.category === 'speed');
     const typePresets = PRESETS.filter(p => p.category === 'type');
+    const durationPresets = PRESETS.filter(p => p.category === 'duration');
 
     const renderPresetButton = (preset: Preset) => {
         const isSelected = selectedPresets.includes(preset.id);
@@ -135,6 +142,12 @@ export function PresetButtons({ selectedPresets, onTogglePreset, className }: Pr
                     <p className="text-xs font-medium text-[#555566] uppercase tracking-wider px-1">Type</p>
                     <div className="flex flex-wrap gap-2">
                         {typePresets.map(renderPresetButton)}
+                    </div>
+                </div>
+                <div className="space-y-2">
+                    <p className="text-xs font-medium text-[#555566] uppercase tracking-wider px-1">Duration</p>
+                    <div className="flex flex-wrap gap-2">
+                        {durationPresets.map(renderPresetButton)}
                     </div>
                 </div>
             </div>

@@ -1,0 +1,14 @@
+{
+  "id": "4596776b-2376-427b-9066-cf0902f5b501",
+  "name": "Project 10",
+  "description": "Generated from: \"i need create video for platform shahid i need bes...\"",
+  "createdAt": "2026-02-06T13:54:54.020Z",
+  "updatedAt": "2026-02-06T13:54:54.020Z",
+  "status": "draft",
+  "settings": {
+    "fps": 30,
+    "duration": 150,
+    "width": 1920,
+    "height": 1080
+  }
+}

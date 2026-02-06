@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Player, PlayerRef } from '@remotion/player';
-import { CurrentComposition, currentProps } from '@director/remotion';
+import { CurrentComposition, currentProps, currentDuration } from '@director/remotion';
 import { useParams } from 'next/navigation';
 import { useSocket } from '@/providers/SocketProvider';
 import { useAgentStore } from '@/stores/agentStore';
@@ -20,11 +20,13 @@ export default function IsolatedPreview() {
     // is registered or a task completes, so that autoplay reliably
     // restarts from the beginning of the fresh render.
     const [compositionVersion, setCompositionVersion] = useState(0);
+    const previewReadyFired = useRef(false);
 
     // Pause playback whenever the agent starts thinking/building.
     useEffect(() => {
         if (isThinking) {
             playerRef.current?.pause();
+            previewReadyFired.current = false; // Reset for next cycle
         }
     }, [isThinking]);
 
@@ -33,21 +35,17 @@ export default function IsolatedPreview() {
         if (!socket) return;
 
         const handlePreviewReady = () => {
-            // Preview is ready - the composition has been validated and PreviewEntry.tsx updated
-            // Bump the key so the Player remounts with the new component.
+            previewReadyFired.current = true;
             setCompositionVersion(prev => prev + 1);
         };
 
         const handleAgentComplete = (payload: any) => {
-            // When the agent finishes successfully, force a remount as well
-            // so that the latest composition + audio are visible immediately.
-            if (payload?.success) {
+            // Only remount if preview:ready didn't already fire (avoid double-remount)
+            if (payload?.success && !previewReadyFired.current) {
                 setCompositionVersion(prev => prev + 1);
             }
         };
 
-        // Listen for preview:ready instead of composition_registered
-        // This ensures we only remount when the preview is actually safe to display
         socket.on('preview:ready', handlePreviewReady);
         socket.on('agent:complete', handleAgentComplete);
 
@@ -63,7 +61,7 @@ export default function IsolatedPreview() {
                 key={compositionVersion}
                 ref={playerRef}
                 component={CurrentComposition}
-                durationInFrames={300}
+                durationInFrames={currentDuration}
                 compositionWidth={1920}
                 compositionHeight={1080}
                 fps={30}
@@ -75,6 +73,7 @@ export default function IsolatedPreview() {
                 autoPlay
                 loop
                 inputProps={currentProps}
+                numberOfSharedAudioTags={16}
                 acknowledgeRemotionLicense
             />
         </div>

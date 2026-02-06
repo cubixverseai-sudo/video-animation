@@ -1,3 +1,4 @@
+// @ts-nocheck — Legacy launchpad component (unused)
 "use client";
 
 import { useState, useRef, useEffect } from 'react';

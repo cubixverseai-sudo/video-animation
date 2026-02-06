@@ -19,10 +19,10 @@ export interface Step {
 }
 
 const DEFAULT_STEPS: Step[] = [
-    { id: 'analyze', name: 'Analyzing', status: 'pending', description: 'Understanding your request' },
-    { id: 'plan', name: 'Planning', status: 'pending', description: 'Creating video script' },
-    { id: 'code', name: 'Building', status: 'pending', description: 'Writing components' },
-    { id: 'review', name: 'Reviewing', status: 'pending', description: 'Visual inspection' },
+    { id: 'analyze', name: 'Analyze', status: 'pending', description: 'Understanding your request' },
+    { id: 'plan', name: 'Plan', status: 'pending', description: 'Creating video script' },
+    { id: 'code', name: 'Build', status: 'pending', description: 'Writing components' },
+    { id: 'review', name: 'Review', status: 'pending', description: 'Visual inspection' },
 ];
 
 interface StepIndicatorProps {
@@ -37,7 +37,7 @@ export function StepIndicator({
     className
 }: StepIndicatorProps) {
     const getStepIcon = (step: Step, index: number) => {
-        const iconClass = "w-4 h-4";
+        const iconClass = "w-3.5 h-3.5";
 
         switch (step.status) {
             case 'completed':
@@ -55,50 +55,56 @@ export function StepIndicator({
         }
     };
 
+    const activeIndex = steps.findIndex(s => s.status === 'active');
+    const completedCount = steps.filter(s => s.status === 'completed').length;
+
     return (
-        <div className={cn("flex items-center gap-2 px-4 py-3 bg-[#0A0A0E] rounded-xl border border-[#1A1A22]", className)}>
+        <div className={cn("flex items-center gap-0 px-2 py-2.5 bg-[#09090D] rounded-lg border border-[#14141C] overflow-hidden", className)}>
             {steps.map((step, index) => (
-                <div key={step.id} className="flex items-center">
+                <div key={step.id} className="flex items-center flex-1 min-w-0">
                     {/* Step */}
                     <motion.div
                         className={cn(
-                            "flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all duration-300",
-                            step.status === 'active' && "bg-indigo-500/10 border border-indigo-500/30",
-                            step.status === 'completed' && "bg-emerald-500/5",
-                            step.status === 'error' && "bg-red-500/10 border border-red-500/30",
-                            step.status === 'pending' && "opacity-50"
+                            "flex items-center gap-1.5 px-1.5 py-1.5 rounded-md transition-all duration-300 relative",
+                            step.status === 'active' && "bg-indigo-500/8",
+                            step.status === 'completed' && "bg-transparent",
+                            step.status === 'error' && "bg-red-500/8",
+                            step.status === 'pending' && "opacity-40"
                         )}
                         initial={false}
-                        animate={{
-                            scale: step.status === 'active' ? 1.02 : 1
-                        }}
+                        animate={{ scale: step.status === 'active' ? 1 : 1 }}
                     >
+                        {/* Active ring pulse */}
+                        {step.status === 'active' && (
+                            <motion.div
+                                className="absolute inset-0 rounded-md border border-indigo-500/20"
+                                animate={{ opacity: [0.3, 0.6, 0.3] }}
+                                transition={{ duration: 2, repeat: Infinity }}
+                            />
+                        )}
+
                         {getStepIcon(step, index)}
                         <span className={cn(
-                            "text-xs font-medium",
+                            "text-[11px] font-medium whitespace-nowrap",
                             step.status === 'active' && "text-indigo-300",
-                            step.status === 'completed' && "text-emerald-400",
+                            step.status === 'completed' && "text-emerald-400/70",
                             step.status === 'error' && "text-red-400",
-                            step.status === 'pending' && "text-[#555566]"
+                            step.status === 'pending' && "text-[#444455]"
                         )}>
                             {step.name}
                         </span>
                     </motion.div>
 
-                    {/* Connector */}
+                    {/* Connector line */}
                     {index < steps.length - 1 && (
-                        <div className="flex items-center px-2">
+                        <div className="flex-1 min-w-[8px] mx-0.5 h-[1px] bg-[#1A1A24] rounded-full overflow-hidden relative">
                             <motion.div
-                                className={cn(
-                                    "w-6 h-[2px] rounded-full",
-                                    index < currentStep
-                                        ? "bg-indigo-500/50"
-                                        : "bg-[#2A2A35]"
-                                )}
-                                initial={false}
+                                className="absolute inset-y-0 left-0 bg-indigo-500/40 rounded-full"
+                                initial={{ width: '0%' }}
                                 animate={{
-                                    backgroundColor: index < currentStep ? 'rgba(99, 102, 241, 0.5)' : 'rgba(42, 42, 53, 1)'
+                                    width: step.status === 'completed' ? '100%' : step.status === 'active' ? '50%' : '0%'
                                 }}
+                                transition={{ duration: 0.6, ease: 'easeOut' }}
                             />
                         </div>
                     )}

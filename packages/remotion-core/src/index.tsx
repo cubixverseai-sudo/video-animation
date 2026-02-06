@@ -10,4 +10,4 @@
  * This keeps the package API clean while still allowing the Agent to swap
  * out the current composition dynamically.
  */
-export { CurrentComposition, currentProps } from './PreviewEntry';
+export { CurrentComposition, currentProps, currentDuration } from './PreviewEntry';

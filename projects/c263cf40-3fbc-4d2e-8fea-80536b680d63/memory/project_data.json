@@ -1,0 +1,12 @@
+{
+  "files": [
+    "PLAN.md",
+    "components/GlowContainer.tsx",
+    "scenes/IntroBuild.tsx",
+    "scenes/LogoReveal.tsx",
+    "Main.tsx"
+  ],
+  "decisions": [],
+  "styleDNA": {},
+  "lastUpdated": 1770380907140
+}

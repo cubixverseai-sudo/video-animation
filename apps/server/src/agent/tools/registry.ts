@@ -115,6 +115,22 @@ export const TOOLS = [
             required: ["command"]
         }
     },
+    {
+        name: "install_package",
+        description: "Install npm packages needed for your creative vision. Call this BEFORE writing files that use external libraries. Packages are installed at the root level for the entire monorepo.",
+        parameters: {
+            type: "OBJECT",
+            properties: {
+                packages: { 
+                    type: "ARRAY", 
+                    items: { type: "STRING" },
+                    description: "Array of package names to install (e.g., ['styled-components', 'framer-motion'])" 
+                },
+                reason: { type: "STRING", description: "Brief explanation of why these packages are needed for your creative vision" }
+            },
+            required: ["packages", "reason"]
+        }
+    },
 
     // ═══════════════════════════════════════════════════════════════
     // 🎬 COMPOSITION REGISTRATION

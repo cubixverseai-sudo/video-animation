@@ -6,18 +6,12 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import * as ts from 'typescript';
 
 const execAsync = promisify(exec);
 
-// Legacy memory (for backward compatibility)
-import { AgentMemory } from './memory/AgentMemory';
-
-// NEW: Advanced Director Memory System
-import { 
-    DirectorMemory, 
-    initializeDirectorMemory, 
-    getDirectorMemory 
-} from './memory/DirectorMemory';
+// Unified Project Brain Memory System
+import { ProjectBrain } from './memory/ProjectBrain';
 
 // Import new Audio System 2.0
 import { AudioDecisionEngine, AVAILABLE_MOODS, AVAILABLE_SFX_CATEGORIES } from './audio/AudioDecisionEngine';
@@ -32,11 +26,7 @@ export class AgentCore {
     private model: any;
     private socketManager: SocketManager;
     private chatSession: any;
-    private memory: AgentMemory;
-    
-    // NEW: Advanced Director Memory System
-    private directorMemory: DirectorMemory | null = null;
-    private useAdvancedMemory: boolean = true; // Enable new memory system
+    private brain: ProjectBrain | null = null;
     
     // Define workspace roots
     // REMOTION_ROOT: packages/remotion-core (for component library and Root.tsx)
@@ -52,12 +42,11 @@ export class AgentCore {
     private pendingPreview: {
         actualExportName: string;
         actualImportPath: string;
+        durationInFrames: number;
     } | null = null;
 
     constructor(socketManager: SocketManager) {
         this.socketManager = socketManager;
-        // Memory will be initialized per project now
-        this.memory = new AgentMemory(this.PROJECTS_ROOT);
 
         if (!process.env.GEMINI_API_KEY) {
             console.warn("⚠️ GEMINI_API_KEY is not set!");
@@ -69,7 +58,7 @@ export class AgentCore {
 
             // Use standard model with tools configuration
             this.model = genAI.getGenerativeModel({
-                model: "gemini-2.5-pro",
+                model: "gemini-3-pro-preview",
                 tools: [{ functionDeclarations: TOOLS }] as any
             });
 
@@ -96,31 +85,17 @@ export class AgentCore {
             // 1.5. Initialize project folder structure if it doesn't exist
             await this.initializeProjectStructure();
 
-            // 2. Load Legacy Memory (for backward compatibility)
-            this.memory = new AgentMemory(this.projectRoot);
-            await this.memory.initialize();
-
-            // 3. NEW: Initialize Advanced Director Memory System
-            if (this.useAdvancedMemory) {
-                try {
-                    // Memory is stored inside the project folder (single source of truth)
-                    const projectMemoryPath = path.join(this.projectRoot, 'memory');
-                    await fs.mkdir(projectMemoryPath, { recursive: true });
-                    
-                    this.directorMemory = await initializeDirectorMemory(projectMemoryPath);
-                    await this.directorMemory.setProjectContext(projectId, this.projectRoot);
-                    
-                    this.socketManager.emitAgentLog('info', `🧠 Advanced Memory System initialized`);
-                } catch (memoryError: any) {
-                    console.error('Failed to initialize Director Memory:', memoryError);
-                    this.socketManager.emitAgentLog('warning', `⚠️ Using legacy memory (advanced memory init failed)`);
-                    this.useAdvancedMemory = false;
-                }
-            }
+            // 2. Initialize ProjectBrain (unified memory system)
+            this.brain = new ProjectBrain(this.projectRoot, projectId);
+            await this.brain.initialize();
+            this.socketManager.emitAgentLog('info', `🧠 ProjectBrain initialized`);
 
             // 4. Reset AI Session with new context
             // Note: No sync needed - projects folder IS the source of truth
             await this.startNewSession();
+
+            // 5. AUTO-RESUME: If project already has Main.tsx, load preview immediately
+            await this.tryResumeExistingProject();
 
             this.socketManager.emitAgentLog('info', `📂 Switched context to project: ${projectId}`);
         })();
@@ -146,6 +121,89 @@ export class AgentCore {
             console.log(`📁 Created initial project structure for ${this.currentProjectId}`);
         } catch (error) {
             console.error('Failed to initialize project structure:', error);
+        }
+    }
+
+    /**
+     * AUTO-RESUME: If the project already has Main.tsx from a previous session,
+     * update PreviewEntry.tsx and emit preview:ready so the UI shows the video immediately.
+     */
+    private async tryResumeExistingProject() {
+        if (!this.projectRoot || !this.currentProjectId) return;
+
+        try {
+            const mainPath = path.join(this.projectRoot, 'Main.tsx');
+            await fs.access(mainPath);
+
+            // Main.tsx exists — this is a previously completed project
+            const mainContent = await fs.readFile(mainPath, 'utf-8');
+            const exportMatch = mainContent.match(/export\s+const\s+(\w+)\s*[=:]/);
+            const componentName = exportMatch ? exportMatch[1] : 'Main';
+            const importPath = `@projects/${this.currentProjectId}/Main`;
+            const aliasName = `${componentName}_${this.currentProjectId.split('-')[0]}`;
+
+            // Calculate total duration from Main.tsx
+            const durationMatches = mainContent.match(/durationInFrames[=:]\s*\{?(\d+)\}?/g) || [];
+            let totalDuration = 0;
+            for (const match of durationMatches) {
+                const num = match.match(/(\d+)/);
+                if (num) totalDuration += parseInt(num[1]);
+            }
+            if (totalDuration === 0) totalDuration = 300;
+
+            // Update Root.tsx (must include registerRoot for Remotion bundler)
+            const rootPath = path.join(this.REMOTION_ROOT, 'src/Root.tsx');
+            const rootContent = `import React from 'react';
+import { Composition, registerRoot } from 'remotion';
+import { CurrentComposition } from './index';
+import { ${componentName} as ${aliasName} } from '${importPath}';
+
+export const RemotionRoot: React.FC = () => {
+    return (
+        <>
+            <Composition
+                id="Default"
+                component={CurrentComposition}
+                durationInFrames={${totalDuration}}
+                fps={30}
+                width={1920}
+                height={1080}
+            />
+            <Composition
+                id="${this.currentProjectId}-${componentName}"
+                component={${aliasName}}
+                durationInFrames={${totalDuration}}
+                fps={30}
+                width={1920}
+                height={1080}
+            />
+        </>
+    );
+};
+
+registerRoot(RemotionRoot);
+`;
+            await fs.writeFile(rootPath, rootContent, 'utf-8');
+
+            // Update PreviewEntry.tsx
+            const previewPath = path.join(this.REMOTION_ROOT, 'src/PreviewEntry.tsx');
+            const previewContent = `import { ${componentName} as CurrentComp } from '${importPath}';\n\nexport const CurrentComposition = CurrentComp;\nexport const currentProps = {};\nexport const currentDuration = ${totalDuration}; // Resumed from existing project\n`;
+            await fs.writeFile(previewPath, previewContent, 'utf-8');
+
+            // Emit preview:ready so frontend unlocks the player
+            this.socketManager.emit('preview:ready', {
+                componentName,
+                importPath,
+                resumed: true,
+                timestamp: Date.now()
+            });
+
+            console.log(`✅ [RESUME] Project ${this.currentProjectId} has existing Main.tsx — preview loaded`);
+            this.socketManager.emitAgentLog('success', `🎬 Existing project loaded — preview ready`);
+
+        } catch {
+            // Main.tsx doesn't exist — this is a new project, nothing to resume
+            console.log(`📋 [RESUME] No Main.tsx found — fresh project`);
         }
     }
 
@@ -223,10 +281,10 @@ export class AgentCore {
         context += `**Project ID:** ${this.currentProjectId}\n\n`;
 
         // Get tracked files
-        const files = this.memory.getFiles();
+        const files = this.brain ? this.brain.getFiles() : [];
         if (files.length > 0) {
             context += `### Existing Files:\n`;
-            files.forEach(f => context += `- ${f}\n`);
+            files.forEach((f: string) => context += `- ${f}\n`);
         } else {
             context += `### Existing Files: None (new project)\n`;
         }
@@ -363,13 +421,13 @@ export class AgentCore {
     public async resetSession() {
         if (this.currentProjectId) {
             // Reset only current project memory
-            await this.memory.reset();
+            if (this.brain) await this.brain.reset();
             await this.startNewSession();
             this.socketManager.emitAgentLog('info', '♻️ Project Session Reset.');
         }
     }
 
-    public async processPrompt(prompt: string, assets: Array<{ buffer: Buffer, mimetype: string }> = []) {
+    public async processPrompt(prompt: string, duration: number = 10, assets: Array<{ buffer: Buffer, mimetype: string }> = []) {
         if (this.initPromise) {
             await this.initPromise;
         }
@@ -382,18 +440,17 @@ export class AgentCore {
         this.socketManager.emitAgentThinking(`Processing Project ${this.currentProjectId || 'Global'}...`);
 
         try {
-            // Inject FRESH Memory Context (use advanced memory if available)
+            // Inject FRESH Memory Context from ProjectBrain
             let memoryContext = '';
-            if (this.useAdvancedMemory && this.directorMemory) {
-                // Use new intelligent context system
-                memoryContext = await this.directorMemory.getContextForAI(prompt);
-                // Record user message in history
-                this.directorMemory.addToHistory('user', prompt);
-            } else {
-                // Fallback to legacy memory
-                memoryContext = await this.memory.getContextSummary();
+            if (this.brain) {
+                memoryContext = this.brain.getContextForPrompt();
+                this.brain.addConversation('user', prompt);
             }
-            const fullPrompt = `${prompt}\n\n${memoryContext}`;
+            
+            // Add duration requirement to prompt
+            const durationFrames = duration * 30; // 30fps
+            const durationInstruction = `\n\n⏱️ **REQUIRED VIDEO DURATION: ${duration} seconds (${durationFrames} frames at 30fps)**\nYou MUST create a video that is exactly ${duration} seconds long. Plan your scenes accordingly to fill this duration.`;
+            const fullPrompt = `${prompt}${durationInstruction}\n\n${memoryContext}`;
 
             // Create multi-modal message parts
             const messageParts: any[] = [{ text: fullPrompt }];
@@ -447,9 +504,9 @@ export class AgentCore {
             if (text) {
                 console.log('💬 [DEBUG] Gemini response:', text.substring(0, 300));
                 this.socketManager.emitAgentLog('info', text);
-                // Record assistant response in advanced memory
-                if (this.useAdvancedMemory && this.directorMemory) {
-                    this.directorMemory.addToHistory('assistant', text);
+                // Record assistant response in brain
+                if (this.brain) {
+                    this.brain.addConversation('assistant', text);
                 }
             }
 
@@ -464,7 +521,17 @@ export class AgentCore {
                 const functionResponses = [];
 
                 for (const call of functionCalls) {
-                    const { name, args } = call;
+                    let { name, args } = call;
+
+                    // --- FIX GEMINI TOOL NAME TYPOS ---
+                    // Gemini sometimes doubles underscores or letters in tool names
+                    const originalName = name;
+                    name = name.replace(/__+/g, '_');  // fetch__audio → fetch_audio
+                    name = name.replace(/([a-z])\1{2,}/g, '$1$1'); // fetchhh → fetchh (safety)
+                    if (name !== originalName) {
+                        console.log(`🔧 Fixed tool name typo: ${originalName} → ${name}`);
+                    }
+
                     console.log(`⚙️ [DEBUG] Executing tool: ${name}`, JSON.stringify(args).substring(0, 200));
 
                     // --- PROFESSIONAL ACTION REPORTING ---
@@ -505,6 +572,12 @@ export class AgentCore {
                         this.socketManager.emitAgentLog('success', `${successEmoji} Completed: ${name}`);
                     } catch (err: any) {
                         console.error(`Tool ${name} failed:`, err);
+                        
+                        // Record failed action in brain
+                        if (this.brain) {
+                            this.brain.recordAction(name, 'fail', args.path, err.message);
+                        }
+                        
                         functionResponses.push({
                             functionResponse: {
                                 name: name,
@@ -547,27 +620,28 @@ export class AgentCore {
                             console.log(`📁 [DEBUG] Scenes folder has ${sceneFiles.length} files:`, sceneFiles);
                             console.log(`📁 [DEBUG] Main.tsx exists: ${mainExists}`);
                             
-                            // 🔧 AUTO-RETRY: If files are missing, nudge the agent to continue
-                            if ((sceneFiles.length === 0 || !mainExists) && loopCount < 50) {
-                                console.log('🔄 [RETRY] Files missing - nudging agent to continue...');
+                            // 🔧 AUTO-RETRY: If Main.tsx is missing, nudge the agent to continue
+                            // Note: We don't enforce a minimum scene count - the agent decides based on the prompt
+                            if (!mainExists && loopCount < 50) {
+                                console.log('🔄 [RETRY] Main.tsx missing - nudging agent to continue...');
                                 this.socketManager.emitAgentLog('info', '🔄 Continuing file creation...');
                                 
                                 // Send a nudge message to continue
                                 const nudgeResult = await this.chatSession.sendMessage([{
-                                    text: `⚠️ CRITICAL: You stopped but the files are NOT created yet!
+                                    text: `⚠️ You stopped but Main.tsx is NOT created yet!
 
 Current state:
-- Scene files: ${sceneFiles.length} (need at least 3)
-- Main.tsx: ${mainExists ? 'EXISTS' : 'MISSING'}
+- Scene files: ${sceneFiles.length} in scenes/
+- Main.tsx: MISSING
 
 You MUST continue NOW:
-1. Call write_file to create each scene in scenes/ folder
-2. Call write_file to create Main.tsx
+1. If you haven't created scenes yet, create them in scenes/ folder
+2. Create Main.tsx to compose everything
 3. Call validate_syntax
 4. Call register_composition
 5. Call deploy_project
 
-DO NOT STOP until all files exist! Start with write_file for the first scene NOW.`
+Continue with the next write_file call NOW.`
                                 }]);
                                 
                                 response = nudgeResult.response;
@@ -578,9 +652,9 @@ DO NOT STOP until all files exist! Start with write_file for the first scene NOW
                                     console.log('✅ [RETRY] Agent resumed with', functionCalls.length, 'function calls');
                                     continue; // Continue the loop
                                 }
-                            } else if (sceneFiles.length === 0 || !mainExists) {
-                                console.error('🔴 [ERROR] Agent stopped but files are missing!');
-                                this.socketManager.emitAgentLog('error', '❌ No scene files were created! The agent stopped too early.');
+                            } else if (!mainExists) {
+                                console.error('🔴 [ERROR] Agent stopped but Main.tsx is missing!');
+                                this.socketManager.emitAgentLog('error', '❌ Main.tsx was not created! The agent stopped too early.');
                             }
                         } catch (e) {
                             console.log('📁 [DEBUG] Could not check project files:', e);
@@ -590,7 +664,7 @@ DO NOT STOP until all files exist! Start with write_file for the first scene NOW
             }
 
             // Finalize preview before completing - this writes PreviewEntry.tsx
-            await this.finalizePreview();
+            const previewFinalized = await this.finalizePreview();
             
             // 🔍 DEBUG: Final check before completion
             console.log('✅ [DEBUG] Agent completing. Checking final state...');
@@ -604,17 +678,16 @@ DO NOT STOP until all files exist! Start with write_file for the first scene NOW
                     console.log(`📊 [FINAL] Project: ${this.currentProjectId}`);
                     console.log(`📊 [FINAL] Scene files: ${sceneFiles.length} (${sceneFiles.join(', ')})`);
                     console.log(`📊 [FINAL] Main.tsx: ${mainExists ? '✅' : '❌'}`);
-                    console.log(`📊 [FINAL] pendingPreview: ${this.pendingPreview ? '✅' : '❌'}`);
+                    console.log(`📊 [FINAL] previewFinalized: ${previewFinalized ? '✅' : '❌'}`);
                     
-                    if (sceneFiles.length === 0) {
-                        this.socketManager.emitAgentLog('error', '❌ No scene files were created! The agent stopped too early.');
-                    }
                     if (!mainExists) {
                         this.socketManager.emitAgentLog('error', '❌ Main.tsx was not created! The agent stopped too early.');
+                    } else if (sceneFiles.length === 0) {
+                        this.socketManager.emitAgentLog('warning', '⚠️ No scene files in scenes/ folder - agent may have used a different structure.');
                     }
                     
-                    // 🔧 FALLBACK: If Main.tsx exists but preview wasn't registered, register it now
-                    if (mainExists && !this.pendingPreview) {
+                    // 🔧 FALLBACK: Only if Main.tsx exists AND finalizePreview didn't already handle it
+                    if (mainExists && !previewFinalized) {
                         console.log('🔧 [FALLBACK] Main.tsx exists but no preview registered. Auto-registering...');
                         this.socketManager.emitAgentLog('info', '🔧 Auto-registering preview...');
                         
@@ -625,10 +698,21 @@ DO NOT STOP until all files exist! Start with write_file for the first scene NOW
                             const importPath = `@projects/${this.currentProjectId}/Main`;
                             const aliasName = `${componentName}_${this.currentProjectId.split('-')[0]}`;
                             
-                            // Update Root.tsx
+                            // Calculate total duration from Main.tsx durationInFrames
+                            const durationMatches = mainContent.match(/durationInFrames[=:]\s*\{?(\d+)\}?/g) || [];
+                            let totalDuration = 0;
+                            for (const match of durationMatches) {
+                                const num = match.match(/(\d+)/);
+                                if (num) totalDuration += parseInt(num[1]);
+                            }
+                            // Fallback to 300 (10s) if no duration found
+                            if (totalDuration === 0) totalDuration = 300;
+                            console.log(`📊 [FALLBACK] Calculated duration: ${totalDuration} frames`);
+                            
+                            // Update Root.tsx (must include registerRoot for Remotion bundler)
                             const rootPath = path.join(this.REMOTION_ROOT, 'src/Root.tsx');
                             const rootContent = `import React from 'react';
-import { Composition } from 'remotion';
+import { Composition, registerRoot } from 'remotion';
 import { CurrentComposition } from './index';
 import { ${componentName} as ${aliasName} } from '${importPath}';
 
@@ -638,15 +722,15 @@ export const RemotionRoot: React.FC = () => {
             <Composition
                 id="Default"
                 component={CurrentComposition}
-                durationInFrames={150}
+                durationInFrames={${totalDuration}}
                 fps={30}
                 width={1920}
                 height={1080}
             />
             <Composition
-                id="${this.currentProjectId}:${componentName}"
+                id="${this.currentProjectId}-${componentName}"
                 component={${aliasName}}
-                durationInFrames={150}
+                durationInFrames={${totalDuration}}
                 fps={30}
                 width={1920}
                 height={1080}
@@ -654,12 +738,14 @@ export const RemotionRoot: React.FC = () => {
         </>
     );
 };
+
+registerRoot(RemotionRoot);
 `;
                             await fs.writeFile(rootPath, rootContent, 'utf-8');
                             
                             // Update PreviewEntry.tsx
                             const previewPath = path.join(this.REMOTION_ROOT, 'src/PreviewEntry.tsx');
-                            const previewContent = `import { ${componentName} as CurrentComp } from '${importPath}';\n\nexport const CurrentComposition = CurrentComp;\nexport const currentProps = {};\n`;
+                            const previewContent = `import { ${componentName} as CurrentComp } from '${importPath}';\n\nexport const CurrentComposition = CurrentComp;\nexport const currentProps = {};\nexport const currentDuration = ${totalDuration}; // Calculated from Main.tsx\n`;
                             await fs.writeFile(previewPath, previewContent, 'utf-8');
                             
                             this.socketManager.emitAgentLog('success', '🎬 Preview activated!');
@@ -694,17 +780,17 @@ export const RemotionRoot: React.FC = () => {
      * Finalizes the preview by writing PreviewEntry.tsx with the pending composition.
      * Called only when the agent completes successfully.
      */
-    private async finalizePreview(): Promise<void> {
+    private async finalizePreview(): Promise<boolean> {
         if (!this.pendingPreview) {
             this.socketManager.emitAgentLog('info', '📋 No pending preview to finalize');
-            return;
+            return false;
         }
         
-        const { actualExportName, actualImportPath } = this.pendingPreview;
+        const { actualExportName, actualImportPath, durationInFrames } = this.pendingPreview;
         
         try {
             const previewPath = path.join(this.REMOTION_ROOT, 'src/PreviewEntry.tsx');
-            const previewContent = `import { ${actualExportName} as CurrentComp } from '${actualImportPath}';\n\nexport const CurrentComposition = CurrentComp;\nexport const currentProps = {};\n`;
+            const previewContent = `import { ${actualExportName} as CurrentComp } from '${actualImportPath}';\n\nexport const CurrentComposition = CurrentComp;\nexport const currentProps = {};\nexport const currentDuration = ${durationInFrames}; // Updated by agent\n`;
             await fs.writeFile(previewPath, previewContent, 'utf-8');
             
             this.socketManager.emitAgentLog('success', '🎬 Preview activated!');
@@ -718,9 +804,185 @@ export const RemotionRoot: React.FC = () => {
             
             // Clear pending preview
             this.pendingPreview = null;
+            return true;
         } catch (error: any) {
             this.socketManager.emitAgentLog('error', `Failed to finalize preview: ${error.message}`);
+            return false;
         }
+    }
+
+    // Helper to check similarity between two UUIDs (for fixing Gemini typos)
+    private checkIdSimilarity(corrupted: string, correct: string): number {
+        let matches = 0;
+        const minLen = Math.min(corrupted.length, correct.length);
+        for (let i = 0; i < minLen; i++) {
+            if (corrupted[i] === correct[i]) matches++;
+        }
+        return matches / correct.length;
+    }
+
+    // TypeScript AST validation for TSX/JSX files
+    private validateTypeScriptSyntax(code: string, fileName: string): { valid: boolean; errors: string[] } {
+        const errors: string[] = [];
+        
+        // Create a source file from the code
+        const sourceFile = ts.createSourceFile(
+            fileName,
+            code,
+            ts.ScriptTarget.Latest,
+            true,
+            fileName.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS
+        );
+
+        // Check for parse errors using diagnostics
+        const compilerOptions: ts.CompilerOptions = {
+            jsx: ts.JsxEmit.React,
+            target: ts.ScriptTarget.ES2020,
+            module: ts.ModuleKind.ESNext,
+            strict: false,
+            noEmit: true,
+            skipLibCheck: true,
+        };
+
+        // Create a simple program to check syntax
+        const host = ts.createCompilerHost(compilerOptions);
+        const originalGetSourceFile = host.getSourceFile;
+        host.getSourceFile = (name, languageVersion) => {
+            if (name === fileName) return sourceFile;
+            return originalGetSourceFile(name, languageVersion);
+        };
+
+        const program = ts.createProgram([fileName], compilerOptions, host);
+        const syntacticDiagnostics = program.getSyntacticDiagnostics(sourceFile);
+
+        for (const diagnostic of syntacticDiagnostics) {
+            const message = ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n');
+            const line = diagnostic.file ? 
+                ts.getLineAndCharacterOfPosition(diagnostic.file, diagnostic.start || 0).line + 1 : 0;
+            errors.push(`Line ${line}: ${message}`);
+        }
+
+        return { valid: errors.length === 0, errors };
+    }
+
+    /**
+     * Validates JSX/TSX content for syntax errors.
+     * Shared by write_file, atomic_edit, validate_syntax, and deploy_project.
+     * Returns list of errors (empty = valid).
+     */
+    private validateJSXContent(content: string, filePath: string): string[] {
+        const syntaxErrors: string[] = [];
+
+        if (!filePath.endsWith('.tsx') && !filePath.endsWith('.jsx')) return [];
+
+        // 1. React import check
+        if (!content.includes("from 'react'") && !content.includes('from "react"')) {
+            syntaxErrors.push("Missing React import");
+        }
+
+        // 2. COMPREHENSIVE JSX TAG BALANCE CHECK
+        const jsxTags = [
+            'AbsoluteFill', 'Sequence', 'Series', 'Series.Sequence',
+            'Audio', 'Video', 'Img', 'div', 'span', 'svg', 'path',
+            'g', 'rect', 'circle', 'text', 'defs', 'linearGradient',
+            'radialGradient', 'stop', 'filter', 'feGaussianBlur'
+        ];
+
+        for (const tag of jsxTags) {
+            const escapedTag = tag.replace('.', '\\.');
+            const allOpenings = (content.match(new RegExp(`<${escapedTag}(?:\\s|>|$)`, 'gm')) || []).length;
+            const selfClosing = (content.match(new RegExp(`<${escapedTag}[^>]*\\/>`, 'g')) || []).length;
+            const closings = (content.match(new RegExp(`<\\/${escapedTag}>`, 'g')) || []).length;
+            const nonSelfClosingOpenings = allOpenings - selfClosing;
+
+            if (nonSelfClosingOpenings > 0 && closings !== nonSelfClosingOpenings) {
+                syntaxErrors.push(`<${tag}>: ${nonSelfClosingOpenings} opening, ${closings} closing`);
+            }
+        }
+
+        // 3. Bracket balance checks (±1 tolerance for template literals & interpolate options)
+        const openBraces = (content.match(/\{/g) || []).length;
+        const closeBraces = (content.match(/\}/g) || []).length;
+        if (Math.abs(openBraces - closeBraces) > 1) {
+            syntaxErrors.push(`Braces: { = ${openBraces}, } = ${closeBraces}`);
+        }
+
+        const openParens = (content.match(/\(/g) || []).length;
+        const closeParens = (content.match(/\)/g) || []).length;
+        if (Math.abs(openParens - closeParens) > 1) {
+            syntaxErrors.push(`Parentheses: ( = ${openParens}, ) = ${closeParens}`);
+        }
+
+        const openBrackets = (content.match(/\[/g) || []).length;
+        const closeBrackets = (content.match(/\]/g) || []).length;
+        if (Math.abs(openBrackets - closeBrackets) > 1) {
+            syntaxErrors.push(`Brackets: [ = ${openBrackets}, ] = ${closeBrackets}`);
+        }
+
+        // 4. Check for common Gemini mistakes
+        if (content.includes('< /') || content.includes('< >')) {
+            syntaxErrors.push("Invalid JSX: space after <");
+        }
+        if (content.match(/=\s*\{\s*\{[^{]/g) && !content.includes('style={{')) {
+            const doubleBraceCount = (content.match(/=\s*\{\s*\{/g) || []).length;
+            const styleCount = (content.match(/style\s*=\s*\{\{/g) || []).length;
+            if (doubleBraceCount > styleCount + 2) {
+                syntaxErrors.push("Suspicious double braces {{ outside style objects");
+            }
+        }
+
+        // 5. Check for ORPHANED ATTRIBUTES (src={...} without a tag)
+        const lines = content.split('\n');
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (/^(src|onClick|onMouseEnter|onMouseLeave|href|alt|className|id|key|ref)\s*=\s*[\{'"]/
+                .test(line)) {
+                let prevLine = '';
+                for (let j = i - 1; j >= 0; j--) {
+                    if (lines[j].trim()) {
+                        prevLine = lines[j].trim();
+                        break;
+                    }
+                }
+                const isValidJSXContext = !prevLine ||
+                    prevLine.endsWith(',') ||
+                    prevLine.endsWith('{') ||
+                    prevLine.endsWith('>') ||
+                    prevLine.endsWith('(') ||
+                    /^<\w/.test(prevLine) ||
+                    prevLine.endsWith('}') ||
+                    prevLine.endsWith('}}') ||
+                    prevLine.endsWith('"') ||
+                    prevLine.endsWith("'") ||
+                    prevLine.endsWith('/>') ||
+                    /^\w[\w.]*\s*=/.test(prevLine);
+
+                const isOrphaned = !isValidJSXContext && (
+                    prevLine.endsWith(';') ||
+                    prevLine.endsWith('*/') ||
+                    /^(const|let|var)\s/.test(prevLine) ||
+                    /^\)/.test(prevLine)
+                );
+
+                if (isOrphaned) {
+                    syntaxErrors.push(`Orphaned attribute at line ${i + 1}: "${line.substring(0, 40)}..."`);
+                }
+            }
+        }
+
+        // 6. Export check
+        if (!content.includes('export const') && !content.includes('export default') && !content.includes('export function')) {
+            syntaxErrors.push("Missing export statement");
+        }
+
+        // 7. TypeScript AST check — ALWAYS run as authoritative validator
+        // The TS compiler correctly handles braces in template literals, strings, and comments
+        const tsValidation = this.validateTypeScriptSyntax(content, filePath);
+        if (!tsValidation.valid) {
+            syntaxErrors.push(...tsValidation.errors);
+        }
+
+        return syntaxErrors;
     }
 
     private async executeTool(name: string, args: any): Promise<any> {
@@ -745,6 +1007,56 @@ export const RemotionRoot: React.FC = () => {
             case 'write_file': {
                 const filePath = getSecurePath(args.path);
                 let content = args.content as string;
+
+                // --- AUTO-DETECT & INSTALL EXTERNAL PACKAGES ---
+                if (filePath.endsWith('.tsx') || filePath.endsWith('.ts') || filePath.endsWith('.jsx') || filePath.endsWith('.js')) {
+                    // Known built-in packages that don't need installation
+                    const builtInPackages = new Set([
+                        'react', 'react-dom', 'remotion', 
+                        '@remotion/cli', '@remotion/bundler', '@remotion/renderer',
+                        '@remotion/player', '@remotion/lambda', '@remotion/gif',
+                        '@remotion/media-utils', '@remotion/paths', '@remotion/shapes',
+                        '@remotion/noise', '@remotion/transitions', '@remotion/google-fonts',
+                        'path', 'fs', 'util', 'crypto', 'os', 'stream', 'events', 'buffer'
+                    ]);
+
+                    // Extract all imports from the content
+                    const importRegex = /import\s+(?:[\w\s{},*]+\s+from\s+)?['"]([^'"./][^'"]*)['"]/g;
+                    const externalPackages = new Set<string>();
+                    let match;
+                    
+                    while ((match = importRegex.exec(content)) !== null) {
+                        const pkg = match[1];
+                        // Get the base package name (for scoped packages like @emotion/styled)
+                        const basePkg = pkg.startsWith('@') ? pkg.split('/').slice(0, 2).join('/') : pkg.split('/')[0];
+                        
+                        if (!builtInPackages.has(basePkg) && !builtInPackages.has(pkg)) {
+                            externalPackages.add(basePkg);
+                        }
+                    }
+
+                    // Auto-install detected packages
+                    if (externalPackages.size > 0) {
+                        const packagesToInstall = Array.from(externalPackages);
+                        this.socketManager.emitAgentLog('info', `📦 Auto-detected external packages: ${packagesToInstall.join(', ')}`);
+                        
+                        try {
+                            const rootDir = path.resolve(this.PROJECTS_ROOT, '..');
+                            const packageList = packagesToInstall.join(' ');
+                            
+                            this.socketManager.emitAgentLog('info', `📦 Auto-installing: ${packageList}...`);
+                            
+                            await execAsync(`pnpm add ${packageList}`, {
+                                cwd: rootDir,
+                                timeout: 120000
+                            });
+                            
+                            this.socketManager.emitAgentLog('success', `✅ Auto-installed: ${packageList}`);
+                        } catch (installError: any) {
+                            this.socketManager.emitAgentLog('warning', `⚠️ Auto-install failed: ${installError.message}. Continuing anyway...`);
+                        }
+                    }
+                }
 
                 // --- FIX GEMINI TYPOS & NORMALIZE CODE ---
                 if (filePath.endsWith('.tsx') || filePath.endsWith('.ts') || filePath.endsWith('.jsx') || filePath.endsWith('.js')) {
@@ -781,12 +1093,15 @@ export const RemotionRoot: React.FC = () => {
                         // Audio
                         [/Auudio/g, 'Audio'],
                         [/Audioo/g, 'Audio'],
+                        [/Audiio/g, 'Audio'],
                         [/AAudio/g, 'Audio'],
                         // React import typos
                         [/from 'react'';/g, "from 'react';"],
                         [/from ''react'/g, "from 'react'"],
                         [/from "react"";/g, 'from "react";'],
                         [/from ""react"/g, 'from "react"'],
+                        [/fromm 'react'/g, "from 'react'"],
+                        [/fromm "react"/g, 'from "react"'],
                         // Parameter typos
                         [/durationInFraames/g, 'durationInFrames'],
                         [/durationInFramess/g, 'durationInFrames'],
@@ -794,9 +1109,45 @@ export const RemotionRoot: React.FC = () => {
                         [/importPathh/g, 'importPath'],
                         [/imporrtPath/g, 'importPath'],
                         [/iimportPath/g, 'importPath'],
+                        [/componenntName/g, 'componentName'],
+                        [/componentNamee/g, 'componentName'],
                         // Component props
                         [/extrapolateeLeft/g, 'extrapolateLeft'],
                         [/extrapolateRightt/g, 'extrapolateRight'],
+                        // Series/Sequence
+                        [/Seriees/g, 'Series'],
+                        [/Seriess/g, 'Series'],
+                        // Double brackets fix
+                        [/\}\s*\}\s*from/g, '} from'],
+                        [/\{\s*\{(\s*\w)/g, '{ $1'],
+                        // Style object fixes - missing opening brace
+                        [/style=\{\s+(\w+):/g, 'style={{ $1:'],
+                        // Double closing braces in style
+                        [/\}\}\}/g, '}}'],
+                        // Import typos with double letters
+                        [/imporrt/g, 'import'],
+                        [/impport/g, 'import'],
+                        [/iimport/g, 'import'],
+                        [/frrom/g, 'from'],
+                        [/ffrom/g, 'from'],
+                        [/Reaact/g, 'React'],
+                        [/RReact/g, 'React'],
+                        // Module name typos
+                        [/'rreact'/g, "'react'"],
+                        [/"rreact"/g, '"react"'],
+                        [/'reemotoin'/g, "'remotion'"],
+                        [/'remotionn'/g, "'remotion'"],
+                        // Remotion API typos
+                        [/rrandom/g, 'random'],
+                        [/ranndom/g, 'random'],
+                        [/Seriies/g, 'Series'],
+                        [/SSeries/g, 'Series'],
+                        [/Imgg/g, 'Img'],
+                        [/IImg/g, 'Img'],
+                        // Double commas in imports/params
+                        [/,\s*,/g, ','],
+                        // Double spaces in imports (cosmetic but prevents confusion)
+                        [/  +/g, ' '],
                     ];
                     
                     let fixCount = 0;
@@ -812,41 +1163,70 @@ export const RemotionRoot: React.FC = () => {
                     if (fixCount > 0) {
                         this.socketManager.emitAgentLog('info', `🔧 Fixed ${fixCount} Gemini typos`);
                     }
+
+                    // --- FIX CORRUPTED PROJECT IDs IN ASSET PATHS ---
+                    // Gemini sometimes corrupts UUIDs in staticFile() paths:
+                    // - Drops characters (7a9029cb -> 7a902cb)
+                    // - Changes characters (8920 -> 8D20)
+                    if (this.currentProjectId && content.includes('staticFile(')) {
+                        const correctId = this.currentProjectId;
+                        // Find all asset paths - include uppercase letters since Gemini sometimes adds them
+                        const assetPathRegex = /assets\/([a-fA-F0-9-]{30,40})\/(?:audio|images)\//gi;
+                        let pathMatch;
+                        let pathFixCount = 0;
+                        const fixedIds = new Set<string>();
+                        
+                        while ((pathMatch = assetPathRegex.exec(content)) !== null) {
+                            const foundId = pathMatch[1];
+                            // If the found ID is different from correct ID
+                            if (foundId !== correctId && !fixedIds.has(foundId)) {
+                                // Check if it's a corrupted version (similar structure)
+                                const similarity = this.checkIdSimilarity(foundId.toLowerCase(), correctId.toLowerCase());
+                                if (similarity > 0.7) {
+                                    content = content.replace(
+                                        new RegExp(`assets/${foundId}/`, 'g'),
+                                        `assets/${correctId}/`
+                                    );
+                                    fixedIds.add(foundId);
+                                    pathFixCount++;
+                                    this.socketManager.emitAgentLog('warning', `🔧 Fixed corrupted project ID: ${foundId} → ${correctId}`);
+                                }
+                            }
+                        }
+                        
+                        if (pathFixCount > 0) {
+                            this.socketManager.emitAgentLog('info', `🔧 Fixed ${pathFixCount} corrupted asset paths`);
+                        }
+                    }
                 }
 
-                // --- ENHANCED JSX SYNTAX PROTECTION ---
+                // --- FIX EMPTY Series.Sequence (Remotion crashes on these) ---
+                // Gemini sometimes puts only comments inside Series.Sequence, which Remotion treats as empty
+                content = content.replace(
+                    /<Series\.Sequence([^>]*)>\s*\{\/\*[^*]*\*\/\}\s*<\/Series\.Sequence>/g,
+                    '<Series.Sequence$1><div /></Series.Sequence>'
+                );
+
+                // --- JSX + TypeScript SYNTAX VALIDATION (shared method) ---
                 if (filePath.endsWith('.tsx') || filePath.endsWith('.jsx')) {
-                    // 1. Check for unbalanced AbsoluteFill tags
-                    const absoluteFillOpenings = (content.match(/<AbsoluteFill/g) || []).length;
-                    const absoluteFillClosings = (content.match(/<\/AbsoluteFill>/g) || []).length;
-                    if (absoluteFillClosings > absoluteFillOpenings) {
-                        throw new Error("Syntax Protection: More closing </AbsoluteFill> tags than openings. Check component structure.");
+                    const syntaxErrors = this.validateJSXContent(content, args.path);
+                    if (syntaxErrors.length > 0) {
+                        const errorMsg = `❌ SYNTAX VALIDATION FAILED:\n${syntaxErrors.map(e => `  • ${e}`).join('\n')}`;
+                        this.socketManager.emitAgentLog('error', errorMsg);
+                        throw new Error(errorMsg);
                     }
-
-                    // 2. Check for missing React import in .tsx files
-                    if (filePath.endsWith('.tsx') && !content.includes("from 'react'") && !content.includes('from "react"')) {
-                        throw new Error("Syntax Protection: Missing React import. Add: import React from 'react';");
-                    }
-
-                    // 3. Check for unbalanced Sequence tags
-                    const sequenceOpenings = (content.match(/<Sequence/g) || []).length;
-                    const sequenceClosings = (content.match(/<\/Sequence>/g) || []).length;
-                    if (Math.abs(sequenceOpenings - sequenceClosings) > 2) {
-                        throw new Error(`Syntax Protection: Unbalanced Sequence tags (${sequenceOpenings} openings, ${sequenceClosings} closings).`);
-                    }
-
-                    // 4. Basic bracket balance check
-                    const openBraces = (content.match(/\{/g) || []).length;
-                    const closeBraces = (content.match(/\}/g) || []).length;
-                    if (Math.abs(openBraces - closeBraces) > 5) {
-                        throw new Error(`Syntax Protection: Severely unbalanced braces ({ = ${openBraces}, } = ${closeBraces}). Code may be corrupt.`);
-                    }
+                    this.socketManager.emitAgentLog('info', `✅ Syntax validation passed for ${args.path}`);
                 }
 
                 await fs.mkdir(path.dirname(filePath), { recursive: true });
                 await fs.writeFile(filePath, content, 'utf-8');
 
-                await this.memory.trackFile(args.path);
+                // Auto-update ProjectBrain with file analysis
+                if (this.brain) {
+                    this.brain.trackFile(args.path, content);
+                    this.brain.recordAction('write_file', 'success', args.path);
+                    await this.brain.flush();
+                }
 
                 this.socketManager.emit('project:update', {
                     type: 'file_change',
@@ -1029,12 +1409,33 @@ export const RemotionRoot: React.FC = () => {
                     lines.splice(startLine - 1, actualEndLine - startLine + 1, ...newLines);
                 }
 
-                // IMPORTANT: Save edits to Project Storage (single source of truth)
+                // --- VALIDATE RESULT BEFORE SAVING (prevent broken code) ---
+                const editedContent = lines.join('\n');
                 const writePath = getSecurePath(args.path);
-                await fs.mkdir(path.dirname(writePath), { recursive: true });
-                await fs.writeFile(writePath, lines.join('\n'), 'utf-8');
 
-                await this.memory.trackFile(args.path);
+                if (args.path.endsWith('.tsx') || args.path.endsWith('.jsx')) {
+                    const syntaxErrors = this.validateJSXContent(editedContent, args.path);
+                    if (syntaxErrors.length > 0) {
+                        // ROLLBACK: Do NOT save the file — return error to Gemini
+                        const errorMsg = `❌ ATOMIC_EDIT REJECTED (file NOT saved):\n${syntaxErrors.map(e => `  • ${e}`).join('\n')}\n\n⚠️ The original file is unchanged. Fix the edit and try again.`;
+                        this.socketManager.emitAgentLog('error', errorMsg);
+                        if (this.brain) {
+                            this.brain.recordAction('atomic_edit', 'fail', args.path, syntaxErrors[0]);
+                        }
+                        throw new Error(errorMsg);
+                    }
+                    this.socketManager.emitAgentLog('info', `✅ Syntax validation passed for edited ${args.path}`);
+                }
+
+                // IMPORTANT: Save edits to Project Storage (single source of truth)
+                await fs.mkdir(path.dirname(writePath), { recursive: true });
+                await fs.writeFile(writePath, editedContent, 'utf-8');
+
+                if (this.brain) {
+                    this.brain.trackFile(args.path, editedContent);
+                    this.brain.recordAction('atomic_edit', 'success', args.path);
+                    await this.brain.flush();
+                }
 
                 this.socketManager.emit('project:update', {
                     type: 'file_change',
@@ -1084,10 +1485,62 @@ export const RemotionRoot: React.FC = () => {
             }
 
             // ═══════════════════════════════════════════════════════════════
+            // 📦 PACKAGE INSTALLATION
+            // ═══════════════════════════════════════════════════════════════
+            case 'install_package': {
+                const { packages, reason } = args;
+                
+                if (!packages || packages.length === 0) {
+                    return "❌ No packages specified. Provide an array of package names.";
+                }
+
+                // Validate package names (security)
+                const validPackageRegex = /^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*(@[^@]+)?$/i;
+                const invalidPackages = packages.filter((pkg: string) => !validPackageRegex.test(pkg));
+                if (invalidPackages.length > 0) {
+                    return `❌ Invalid package names: ${invalidPackages.join(', ')}`;
+                }
+
+                const packageList = packages.join(' ');
+                this.socketManager.emitAgentLog('info', `📦 Installing packages: ${packageList}`);
+                this.socketManager.emitAgentLog('info', `💡 Reason: ${reason}`);
+
+                try {
+                    // Install at root level of monorepo for shared access
+                    const rootDir = path.resolve(this.PROJECTS_ROOT, '..');
+                    
+                    const { stdout, stderr } = await execAsync(`pnpm add ${packageList}`, {
+                        cwd: rootDir,
+                        timeout: 120000 // 2 minute timeout for installation
+                    });
+
+                    this.socketManager.emitAgentLog('success', `✅ Packages installed: ${packageList}`);
+                    
+                    return JSON.stringify({
+                        success: true,
+                        message: `✅ Successfully installed: ${packageList}`,
+                        packages: packages,
+                        reason: reason,
+                        output: stdout || stderr || 'Installation completed',
+                        nextStep: "You can now import these packages in your components!"
+                    }, null, 2);
+                } catch (error: any) {
+                    this.socketManager.emitAgentLog('error', `❌ Installation failed: ${error.message}`);
+                    return `❌ Failed to install packages: ${error.message}`;
+                }
+            }
+
+            // ═══════════════════════════════════════════════════════════════
             // 🎬 COMPOSITION REGISTRATION
             // ═══════════════════════════════════════════════════════════════
             case 'register_composition': {
-                const { componentName, importPath, durationInFrames, fps = 30, width = 1920, height = 1080 } = args;
+                // Fix common Gemini typos in tool parameters
+                const durationInFrames = args.durationInFrames || args.duraationInFrames || args.durationInFraames || 300;
+                const componentName = args.componentName || args.componenntName || 'Main';
+                const importPath = args.importPath || args.importPathh || args.imporrtPath || 'Main';
+                const fps = args.fps || 30;
+                const width = args.width || args.widthh || 1920;
+                const height = args.height || args.heightt || 1080;
 
                 // ═══════════════════════════════════════════════════════════════
                 // 🛡️ MANDATORY VALIDATION GATE - Block registration if code has errors
@@ -1167,13 +1620,14 @@ export const RemotionRoot: React.FC = () => {
                     ? `${actualExportName}_${this.currentProjectId.split('-')[0]}`
                     : actualExportName;
 
-                const compositionId = this.currentProjectId ? `${this.currentProjectId}:${actualExportName}` : actualExportName;
+                const compositionId = this.currentProjectId ? `${this.currentProjectId}-${actualExportName}` : actualExportName;
 
                 // 1. Update Root.tsx - CLEAN APPROACH: Only keep current project, remove old ones
                 // This prevents accumulation of broken old projects that block compilation
+                // Must include registerRoot() for Remotion bundler/renderer
                 const rootPath = path.join(this.REMOTION_ROOT, 'src/Root.tsx');
                 const cleanRootContent = `import React from 'react';
-import { Composition } from 'remotion';
+import { Composition, registerRoot } from 'remotion';
 import { CurrentComposition } from './index';
 import { ${actualExportName} as ${aliasName} } from '${actualImportPath}';
 
@@ -1206,6 +1660,8 @@ export const RemotionRoot: React.FC = () => {
         </>
     );
 };
+
+registerRoot(RemotionRoot);
 `;
 
                 await fs.writeFile(rootPath, cleanRootContent, 'utf-8');
@@ -1214,7 +1670,8 @@ export const RemotionRoot: React.FC = () => {
                 // This prevents broken previews during generation
                 this.pendingPreview = {
                     actualExportName,
-                    actualImportPath
+                    actualImportPath,
+                    durationInFrames
                 };
                 this.socketManager.emitAgentLog('info', '📋 Preview queued - will be activated when generation completes');
 
@@ -1225,8 +1682,8 @@ export const RemotionRoot: React.FC = () => {
             }
 
             case 'validate_syntax': {
-                // SIMPLIFIED VALIDATION: Only basic checks to avoid infinite loops
-                const files = this.memory.getFiles();
+                // FULL VALIDATION: Same checks as write_file and atomic_edit
+                const files = this.brain ? this.brain.getFiles() : [];
                 if (files.length === 0) return "✅ No files to validate yet. Continue with file creation.";
 
                 this.socketManager.emitAgentLog('info', `🔍 Validating ${files.length} files...`);
@@ -1239,36 +1696,19 @@ export const RemotionRoot: React.FC = () => {
                     const filePath = path.join(this.projectRoot!, file);
                     try {
                         const content = await fs.readFile(filePath, 'utf-8');
-
-                        // Only check for CRITICAL issues that would definitely break compilation
-                        if (file.endsWith('.tsx')) {
-                            // Must have React import
-                            if (!content.includes("from 'react'") && !content.includes('from "react"')) {
-                                errors.push(`[${file}] Missing: import React from 'react';`);
-                            }
-                            
-                            // Check for obvious syntax errors - unbalanced braces
-                            const openBraces = (content.match(/\{/g) || []).length;
-                            const closeBraces = (content.match(/\}/g) || []).length;
-                            if (Math.abs(openBraces - closeBraces) > 3) {
-                                errors.push(`[${file}] Unbalanced braces: { = ${openBraces}, } = ${closeBraces}`);
-                            }
-                            
-                            // Check for export
-                            if (!content.includes('export const') && !content.includes('export default') && !content.includes('export function')) {
-                                errors.push(`[${file}] Missing export statement`);
-                            }
+                        const fileErrors = this.validateJSXContent(content, file);
+                        for (const err of fileErrors) {
+                            errors.push(`[${file}] ${err}`);
                         }
                     } catch (e) {
                         errors.push(`[${file}] File not found`);
                     }
                 }
 
-                // Only report CRITICAL errors, not TypeScript warnings
                 if (errors.length > 0) {
-                    const errorReport = errors.slice(0, 5).join('\n');
+                    const errorReport = errors.slice(0, 10).join('\n');
                     this.socketManager.emitAgentLog('warning', `⚠️ Issues found:\n${errorReport}`);
-                    return `⚠️ ISSUES FOUND:\n${errorReport}\n\nFix these and try again.`;
+                    return `⚠️ VALIDATION ERRORS:\n${errorReport}\n\nFix these and try again.`;
                 }
 
                 this.socketManager.emitAgentLog('success', `✅ All ${files.length} files look good!`);
@@ -1277,22 +1717,56 @@ export const RemotionRoot: React.FC = () => {
 
             case 'deploy_project': {
                 const { message } = args;
+                this.socketManager.emitAgentLog('info', `🚀 Pre-deploy validation...`);
+
+                // --- PRE-DEPLOY VALIDATION GATE ---
+                if (this.projectRoot && this.brain) {
+                    const deployErrors: string[] = [];
+                    const trackedFiles = this.brain.getFiles();
+                    
+                    for (const file of trackedFiles) {
+                        if (!file.endsWith('.tsx') && !file.endsWith('.jsx')) continue;
+                        try {
+                            const filePath = path.join(this.projectRoot, file);
+                            const content = await fs.readFile(filePath, 'utf-8');
+                            const fileErrors = this.validateJSXContent(content, file);
+                            for (const err of fileErrors) {
+                                deployErrors.push(`[${file}] ${err}`);
+                            }
+                        } catch { /* skip missing files */ }
+                    }
+
+                    if (deployErrors.length > 0) {
+                        const errorReport = deployErrors.slice(0, 10).join('\n');
+                        const errorMsg = `❌ DEPLOY BLOCKED — broken code detected:\n${errorReport}\n\n⚠️ Fix these errors first, then call deploy_project again.`;
+                        this.socketManager.emitAgentLog('error', errorMsg);
+                        this.brain.recordAction('deploy_project', 'fail', undefined, deployErrors[0]);
+                        throw new Error(errorMsg);
+                    }
+                    this.socketManager.emitAgentLog('success', `✅ Pre-deploy validation passed`);
+                }
+
                 this.socketManager.emitAgentLog('info', `🚀 Deploying project: ${message}`);
 
                 // No sync needed - projects folder IS the source of truth
-                await this.memory.appendLog(`🚀 DEPLOYED: ${message}`);
+                if (this.brain) {
+                    await this.brain.appendLog(`🚀 DEPLOYED: ${message}`);
+                    this.brain.recordAction('deploy_project', 'success');
+                    // Post-deploy reflection: refresh file summaries & extract brand
+                    await this.brain.postDeployReflection();
+                }
 
                 return `🎉 Project deployed! ${message}`;
             }
 
             case 'update_log': {
-                await this.memory.appendLog(args.entry);
+                if (this.brain) await this.brain.appendLog(args.entry);
                 this.socketManager.emitAgentLog('info', `📝 Log Updated: ${args.entry.slice(0, 50)}...`);
                 return `✅ Log updated successfully.`;
             }
 
             case 'record_decision': {
-                await this.memory.updateDecision(args.context, args.choice);
+                if (this.brain) await this.brain.updateDecision(args.context, args.choice);
                 this.socketManager.emitAgentLog('info', `⚖️ Decision Recorded: ${args.context}`);
                 return `✅ Decision recorded: [${args.context}] -> ${args.choice}`;
             }
@@ -1714,115 +2188,83 @@ export const RemotionRoot: React.FC = () => {
             // 🧠 ADVANCED MEMORY SYSTEM
             // ═══════════════════════════════════════════════════════════════
             case 'get_animation_recommendations': {
-                if (!this.directorMemory) return "❌ Advanced memory not available";
-                
-                const { animationType } = args;
-                const recommendations = await this.directorMemory.getAnimationRecommendations(animationType);
-                
+                // Simplified: return project brain context instead of old pattern library
                 return JSON.stringify({
-                    message: `Animation recommendations for ${animationType}`,
-                    recommendations: recommendations.slice(0, 5).map(r => ({
-                        name: r.pattern.name,
-                        confidence: Math.round(r.confidence * 100) + '%',
-                        reason: r.reason,
-                        timing: r.pattern.timing,
-                        easing: r.pattern.easing
-                    }))
+                    message: `Use spring physics and cinematic easing for ${args.animationType || 'animations'}. Check project brain for current style.`,
+                    tip: 'Use spring({ fps, frame, config: { damping: 12, mass: 0.5 } }) for natural motion.'
                 }, null, 2);
             }
 
             case 'get_audio_recommendations': {
-                if (!this.directorMemory) return "❌ Advanced memory not available";
-                
-                const { sceneType, mood } = args;
-                const recommendations = await this.directorMemory.getAudioRecommendations(sceneType, mood);
-                
                 return JSON.stringify({
-                    message: `Audio recommendations for ${sceneType} (${mood || 'any mood'})`,
-                    recommendations: recommendations.slice(0, 5).map(r => ({
-                        type: r.mapping.audioType,
-                        mood: r.mapping.mood,
-                        confidence: Math.round(r.confidence * 100) + '%',
-                        searchKeywords: r.searchKeywords
-                    }))
+                    message: `For ${args.sceneType || 'scenes'}, use fetch_audio tool to get appropriate audio.`,
+                    tip: 'Match audio mood to scene type: intro→cinematic, content→ambient, outro→uplifting'
                 }, null, 2);
             }
 
             case 'get_template_recommendations': {
-                if (!this.directorMemory) return "❌ Advanced memory not available";
-                
-                const { videoType, keywords } = args;
-                const recommendations = await this.directorMemory.getTemplateRecommendations(videoType, keywords);
-                
                 return JSON.stringify({
-                    message: `Template recommendations`,
-                    recommendations: recommendations.slice(0, 3).map(r => ({
-                        name: r.template.name,
-                        description: r.template.description,
-                        type: r.template.videoType,
-                        complexity: r.template.complexity,
-                        confidence: Math.round(r.confidence * 100) + '%',
-                        adaptations: r.requiredAdaptations
-                    }))
+                    message: `Template guidance available in project brain context.`,
+                    tip: 'Structure: Series(Scene1 → Scene2 → ...) with Audio tracks.'
                 }, null, 2);
             }
 
             case 'learn_animation_success': {
-                if (!this.directorMemory) return "❌ Advanced memory not available";
-                
-                const { animation, sceneType, feedback } = args;
-                await this.directorMemory.learn({
-                    type: 'animation_success',
-                    data: { ...animation, sceneType },
-                    feedback,
-                    projectId: this.currentProjectId || undefined
-                });
-                
-                this.socketManager.emitAgentLog('success', `🧠 Animation pattern learned!`);
-                return "✅ Animation pattern stored in memory for future use";
+                // Record as a decision in ProjectBrain
+                if (this.brain) {
+                    const { animation, sceneType } = args;
+                    this.brain.addDecision(
+                        `Animation: ${animation?.name || sceneType || 'pattern'}`,
+                        args.feedback || 'Successful animation',
+                        null
+                    );
+                    await this.brain.flush();
+                }
+                return "✅ Animation pattern recorded in project brain";
             }
 
             case 'learn_audio_success': {
-                if (!this.directorMemory) return "❌ Advanced memory not available";
-                
-                const { audio, feedback } = args;
-                await this.directorMemory.learn({
-                    type: 'audio_success',
-                    data: audio,
-                    feedback,
-                    projectId: this.currentProjectId || undefined
-                });
-                
-                this.socketManager.emitAgentLog('success', `🧠 Audio pattern learned!`);
-                return "✅ Audio association stored in memory for future use";
+                if (this.brain) {
+                    const { audio } = args;
+                    this.brain.addDecision(
+                        `Audio: ${audio?.type || 'track'}`,
+                        args.feedback || 'Successful audio choice',
+                        null
+                    );
+                    await this.brain.flush();
+                }
+                return "✅ Audio choice recorded in project brain";
             }
 
             case 'search_memory': {
-                if (!this.directorMemory) return "❌ Advanced memory not available";
+                if (!this.brain) return "❌ No project brain available";
                 
-                const { query, limit = 5 } = args;
-                const results = this.directorMemory.search(query, limit);
-                
+                const brainData = this.brain.getData();
                 return JSON.stringify({
-                    message: `Memory search results for "${query}"`,
-                    count: results.length,
-                    results: results.map(r => ({
-                        category: r.category,
-                        content: typeof r.content === 'string' ? r.content.slice(0, 100) : JSON.stringify(r.content).slice(0, 100),
-                        importance: r.metadata.importance,
-                        tags: r.metadata.tags
-                    }))
+                    message: `Project Brain contents`,
+                    files: Object.keys(brainData.core.project_state.files),
+                    decisions: brainData.core.decisions,
+                    brand: brainData.core.brand_identity,
+                    recentActions: brainData.recall.actions.slice(-5)
                 }, null, 2);
             }
 
             case 'get_memory_stats': {
-                if (!this.directorMemory) return "❌ Advanced memory not available";
+                if (!this.brain) return "❌ No project brain available";
                 
-                const stats = await this.directorMemory.getStats();
-                
+                const brainData = this.brain.getData();
                 return JSON.stringify({
-                    message: "Memory System Statistics",
-                    stats
+                    message: "ProjectBrain Statistics",
+                    stats: {
+                        trackedFiles: Object.keys(brainData.core.project_state.files).length,
+                        decisions: brainData.core.decisions.length,
+                        conversations: brainData.recall.conversation.length,
+                        actions: brainData.recall.actions.length,
+                        imageAssets: brainData.core.project_state.assets.images.length,
+                        audioAssets: brainData.core.project_state.assets.audio.length,
+                        brandName: brainData.core.brand_identity.name,
+                        lastUpdated: brainData.updatedAt
+                    }
                 }, null, 2);
             }
 
@@ -1894,9 +2336,11 @@ ${scenes.map((s: any) => `  - [ ] ${s.fileName}`).join('\n')}
                 const planPath = path.join(this.projectRoot, 'PLAN.md');
                 await fs.writeFile(planPath, planContent, 'utf-8');
                 
-                // Track in memory
-                await this.memory.trackFile('PLAN.md');
-                await this.memory.appendLog(`📋 Created project plan with ${scenes.length} scenes`);
+                // Track in brain
+                if (this.brain) {
+                    this.brain.trackFile('PLAN.md', planContent);
+                    await this.brain.appendLog(`📋 Created project plan with ${scenes.length} scenes`);
+                }
                 
                 this.socketManager.emitAgentLog('success', `✅ Project plan created! Scenes folder ready.`);
                 

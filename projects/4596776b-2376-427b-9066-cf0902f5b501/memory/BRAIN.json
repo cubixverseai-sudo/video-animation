@@ -1,0 +1,240 @@
+{
+  "version": 2,
+  "updatedAt": "2026-02-06T13:59:50.194Z",
+  "core": {
+    "project_state": {
+      "totalDuration": 150,
+      "fps": 30,
+      "compositionEntry": "Main.tsx",
+      "files": {
+        "PLAN.md": {
+          "role": "config",
+          "summary": "53L",
+          "imports": [],
+          "assetRefs": [],
+          "lastModified": "2026-02-06T13:55:14.547Z"
+        },
+        "components/GradientBackground.tsx": {
+          "role": "component",
+          "summary": "GradientBackground | 13L",
+          "imports": [],
+          "assetRefs": [],
+          "lastModified": "2026-02-06T13:59:50.193Z"
+        },
+        "components/ParticleSystem.tsx": {
+          "role": "component",
+          "summary": "ParticleSystem | 43L",
+          "imports": [],
+          "assetRefs": [],
+          "lastModified": "2026-02-06T13:59:50.193Z"
+        },
+        "components/GlowText.tsx": {
+          "role": "component",
+          "summary": "GlowText | 55L",
+          "imports": [],
+          "assetRefs": [],
+          "lastModified": "2026-02-06T13:59:50.192Z"
+        },
+        "scenes/IntroScene.tsx": {
+          "role": "scene",
+          "summary": "IntroScene | 66L | spring | interpolate",
+          "imports": [
+            "components/GradientBackground",
+            "components/ParticleSystem",
+            "components/GlowText"
+          ],
+          "assetRefs": [],
+          "lastModified": "2026-02-06T13:59:50.192Z"
+        },
+        "scenes/FeatureScene.tsx": {
+          "role": "scene",
+          "summary": "FeatureScene | 52L | spring | interpolate",
+          "imports": [
+            "components/GradientBackground",
+            "components/ParticleSystem",
+            "components/GlowText"
+          ],
+          "assetRefs": [],
+          "lastModified": "2026-02-06T13:59:50.192Z"
+        },
+        "scenes/LogoScene.tsx": {
+          "role": "scene",
+          "summary": "LogoScene | 70L | spring | interpolate",
+          "imports": [
+            "components/GradientBackground",
+            "components/ParticleSystem",
+            "components/GlowText"
+          ],
+          "assetRefs": [],
+          "lastModified": "2026-02-06T13:59:50.192Z"
+        },
+        "Main.tsx": {
+          "role": "entry",
+          "summary": "Main | 83L | Series | Audio | durations: 60f+90f+60f+90f+10f+50f+50f+40f+140f+40f+210f+50f",
+          "imports": [
+            "scenes/IntroScene",
+            "scenes/FeatureScene",
+            "scenes/LogoScene",
+            "scenes/HassanScene"
+          ],
+          "assetRefs": [
+            "audio/bgm-cinematic-bgm_epic_1770386125532.mp3",
+            "audio/sfx-whoosh-sfx_tech_1770386136119.mp3",
+            "audio/sfx-transition-sfx_tech_1770386138510.mp3",
+            "audio/sfx-whoosh-sfx_tech_1770386136119.mp3",
+            "audio/sfx-impact-sfx_epic_1770386140762.mp3"
+          ],
+          "lastModified": "2026-02-06T13:59:50.191Z"
+        },
+        "scenes/HassanScene.tsx": {
+          "role": "scene",
+          "summary": "HassanScene | 59L | spring | interpolate",
+          "imports": [
+            "components/GradientBackground",
+            "components/ParticleSystem",
+            "components/GlowText"
+          ],
+          "assetRefs": [],
+          "lastModified": "2026-02-06T13:59:50.192Z"
+        }
+      },
+      "assets": {
+        "images": [],
+        "audio": [
+          "bgm-cinematic-bgm_epic_1770386125532.mp3",
+          "sfx-impact-sfx_epic_1770386140762.mp3",
+          "sfx-transition-sfx_tech_1770386138510.mp3",
+          "sfx-whoosh-sfx_tech_1770386136119.mp3"
+        ]
+      }
+    },
+    "brand_identity": {
+      "name": null,
+      "logo": null,
+      "colors": [
+        "#fff",
+        "#aaa",
+        "#000"
+      ],
+      "style": null,
+      "font": "Inter"
+    },
+    "decisions": []
+  },
+  "recall": {
+    "conversation": [
+      {
+        "role": "user",
+        "content": "i need create video for platform shahid i need best animtion ",
+        "ts": "2026-02-06T13:54:57.848Z"
+      },
+      {
+        "role": "assistant",
+        "content": "📋 Created project plan with 3 scenes",
+        "ts": "2026-02-06T13:55:14.547Z"
+      },
+      {
+        "role": "assistant",
+        "content": "🚀 DEPLOYED: Completed SHAHID brand video (10s). Cinematic style with particles, glow effects, and kinetic typography.",
+        "ts": "2026-02-06T13:57:26.201Z"
+      },
+      {
+        "role": "user",
+        "content": "I want you to add a 3-second clip that includes the word \"hassan\".",
+        "ts": "2026-02-06T13:58:13.848Z"
+      },
+      {
+        "role": "assistant",
+        "content": "🚀 DEPLOYED: Added 'Hassan' scene (3s) and adjusted timing to keep total duration at 10s.",
+        "ts": "2026-02-06T13:59:50.189Z"
+      }
+    ],
+    "actions": [
+      {
+        "tool": "write_file",
+        "result": "success",
+        "ts": "2026-02-06T13:55:51.896Z",
+        "path": "components/GradientBackground.tsx"
+      },
+      {
+        "tool": "write_file",
+        "result": "success",
+        "ts": "2026-02-06T13:56:00.140Z",
+        "path": "components/ParticleSystem.tsx"
+      },
+      {
+        "tool": "write_file",
+        "result": "success",
+        "ts": "2026-02-06T13:56:07.595Z",
+        "path": "components/GlowText.tsx"
+      },
+      {
+        "tool": "write_file",
+        "result": "success",
+        "ts": "2026-02-06T13:56:17.291Z",
+        "path": "scenes/IntroScene.tsx"
+      },
+      {
+        "tool": "write_file",
+        "result": "success",
+        "ts": "2026-02-06T13:56:28.497Z",
+        "path": "scenes/FeatureScene.tsx"
+      },
+      {
+        "tool": "write_file",
+        "result": "success",
+        "ts": "2026-02-06T13:56:39.116Z",
+        "path": "scenes/LogoScene.tsx"
+      },
+      {
+        "tool": "write_file",
+        "result": "success",
+        "ts": "2026-02-06T13:56:53.192Z",
+        "path": "Main.tsx"
+      },
+      {
+        "tool": "deploy_project",
+        "result": "success",
+        "ts": "2026-02-06T13:57:26.203Z"
+      },
+      {
+        "tool": "write_file",
+        "result": "fail",
+        "ts": "2026-02-06T13:58:37.161Z",
+        "path": "scenes/HassanScene.tsx",
+        "error": "❌ SYNTAX VALIDATION FAILED:\n  • Line 35: '}' expected.\n  • Line 37: Unexpected token. Did you mean `{'}'}` or `&rbrace;`?\n  • Line 37: Unexpected token. Did you mean `{'}'}` or `&rbrace;`?\n  • Line 37"
+      },
+      {
+        "tool": "write_file",
+        "result": "fail",
+        "ts": "2026-02-06T13:58:49.631Z",
+        "path": "scenes/HassanScene.tsx",
+        "error": "❌ SYNTAX VALIDATION FAILED:\n  • Braces: { = 19, } = 21\n  • Line 35: '}' expected.\n  • Line 40: Unexpected token. Did you mean `{'}'}` or `&rbrace;`?\n  • Line 40: Unexpected token. Did you mean `{'}'}`"
+      },
+      {
+        "tool": "write_file",
+        "result": "fail",
+        "ts": "2026-02-06T13:59:03.908Z",
+        "path": "scenes/HassanScene.tsx",
+        "error": "❌ SYNTAX VALIDATION FAILED:\n  • Line 27: '}' expected.\n  • Line 27: Unexpected token. Did you mean `{'}'}` or `&rbrace;`?\n  • Line 27: Unexpected token. Did you mean `{'}'}` or `&rbrace;`?\n  • Line 27"
+      },
+      {
+        "tool": "write_file",
+        "result": "success",
+        "ts": "2026-02-06T13:59:16.321Z",
+        "path": "scenes/HassanScene.tsx"
+      },
+      {
+        "tool": "write_file",
+        "result": "success",
+        "ts": "2026-02-06T13:59:30.809Z",
+        "path": "Main.tsx"
+      },
+      {
+        "tool": "deploy_project",
+        "result": "success",
+        "ts": "2026-02-06T13:59:50.190Z"
+      }
+    ]
+  }
+}

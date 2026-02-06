@@ -62,10 +62,10 @@ export interface AgentState {
 }
 
 const DEFAULT_STEPS: AgentStep[] = [
-    { id: 'analyze', name: 'Analyzing', status: 'pending', description: 'Understanding your request' },
-    { id: 'plan', name: 'Planning', status: 'pending', description: 'Creating video script' },
-    { id: 'code', name: 'Building', status: 'pending', description: 'Writing components' },
-    { id: 'review', name: 'Reviewing', status: 'pending', description: 'Visual inspection' },
+    { id: 'analyze', name: 'Analyze', status: 'pending', description: 'Understanding your request' },
+    { id: 'plan', name: 'Plan', status: 'pending', description: 'Creating video script' },
+    { id: 'code', name: 'Build', status: 'pending', description: 'Writing components' },
+    { id: 'review', name: 'Review', status: 'pending', description: 'Visual inspection' },
 ];
 
 const initialAgentState = {

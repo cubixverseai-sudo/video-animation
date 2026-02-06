@@ -3,7 +3,6 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-    Terminal,
     Cpu,
     CheckCircle2,
     AlertCircle,
@@ -148,42 +147,17 @@ export function ConsoleContainer() {
     }, [resize, stopResizing]);
 
     return (
-        <div style={{ width }} className="flex flex-col h-full bg-[#050505] border-r border-[#1F1F1F] relative flex-shrink-0 group/sidebar">
-            {/* Header */}
-            <div className="h-14 flex items-center justify-between px-5 border-b border-[#1F1F1F] bg-[#0A0A0A]">
-                <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center border border-indigo-500/20">
-                        <Terminal className="w-4 h-4 text-indigo-400" />
-                    </div>
-                    <div>
-                        <span className="text-xs font-bold text-gray-200 tracking-wider block">AGENT CORE</span>
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                            {isThinking ? (
-                                <>
-                                    <Loader2 className="w-2.5 h-2.5 text-indigo-400 animate-spin" />
-                                    <span className="text-[9px] text-indigo-400 font-mono">WORKING</span>
-                                </>
-                            ) : (
-                                <>
-                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                                    <span className="text-[9px] text-gray-500 font-mono">READY</span>
-                                </>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* Steps & Errors Area */}
-            <div className="flex-shrink-0 border-b border-[#1F1F1F] bg-[#080808]">
-                <div className="p-3">
-                    <StepIndicator steps={steps} currentStep={currentStep} className="mb-2" />
+        <div style={{ width }} className="flex flex-col h-full bg-[#060608] border-r border-[#141418] relative flex-shrink-0 group/sidebar">
+            {/* Steps */}
+            <div className="flex-shrink-0 border-b border-[#141418] bg-[#07070B]">
+                <div className="px-2 py-2">
+                    <StepIndicator steps={steps} currentStep={currentStep} className="mb-1.5" />
                     <ErrorDisplay errors={errors} onDismiss={removeError} />
                 </div>
             </div>
 
             {/* Project Plan Viewer */}
-            <div className="flex-shrink-0 border-b border-[#1F1F1F] p-3">
+            <div className="flex-shrink-0 border-b border-[#141418] px-3 py-2.5">
                 <PlanViewer 
                     projectId={projectId} 
                     isExpanded={showPlan}
@@ -192,20 +166,32 @@ export function ConsoleContainer() {
             </div>
 
             {/* Logs Stream */}
-            <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-2 bg-[#050505]" ref={scrollRef}>
-                {logs.length === 0 && (
-                    <div className="flex flex-col items-center justify-center h-full text-center opacity-30">
-                        <Cpu className="w-12 h-12 mb-4 text-gray-400" />
-                        <p className="text-sm font-medium text-gray-300">Awaiting Instructions</p>
-                    </div>
-                )}
-                {logs.map((log) => (
-                    <LogItem key={log.id} log={log} />
-                ))}
+            <div className="flex-1 relative overflow-hidden">
+                {/* Fade gradient at top */}
+                <div className="absolute top-0 left-0 right-0 h-6 bg-gradient-to-b from-[#060608] to-transparent z-10 pointer-events-none" />
+                
+                <div className="h-full overflow-y-auto custom-scrollbar px-3 py-3 space-y-1.5" ref={scrollRef}>
+                    {logs.length === 0 && (
+                        <div className="flex flex-col items-center justify-center h-full text-center opacity-20">
+                            <Cpu className="w-12 h-12 mb-3 text-[#3A3A4A]" />
+                            <p className="text-sm font-medium text-[#3A3A4A]">Awaiting Instructions</p>
+                        </div>
+                    )}
+                    {logs.map((log) => (
+                        <LogItem key={log.id} log={log} />
+                    ))}
+                </div>
             </div>
 
             {/* Resize Handle */}
-            <div onMouseDown={startResizing} className={cn("absolute top-0 right-0 w-1 h-full cursor-ew-resize hover:bg-indigo-500/50 transition-colors z-50", isResizing && "bg-indigo-500")} />
+            <div
+                onMouseDown={startResizing}
+                className={cn(
+                    "absolute top-0 right-0 w-[3px] h-full cursor-ew-resize z-50 transition-all duration-200",
+                    "hover:bg-indigo-500/30",
+                    isResizing ? "bg-indigo-500/50" : "bg-transparent"
+                )}
+            />
         </div>
     );
 }
@@ -213,73 +199,61 @@ export function ConsoleContainer() {
 function LogItem({ log }: { log: LogEntry }) {
     const [expanded, setExpanded] = useState(false);
 
-    const getIcon = () => {
-        switch (log.type) {
-            case 'success':
-                return <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />;
-            case 'error':
-                return <AlertCircle className="w-3.5 h-3.5 text-rose-500" />;
-            case 'warning':
-                return <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />;
-            default:
-                return <Zap className="w-3.5 h-3.5 text-gray-500" />;
-        }
+    const colorMap = {
+        success: { bar: 'bg-emerald-500', text: 'text-emerald-300/90', icon: <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500/80" /> },
+        error: { bar: 'bg-rose-500', text: 'text-rose-300/90', icon: <AlertCircle className="w-3.5 h-3.5 text-rose-500/80" /> },
+        warning: { bar: 'bg-amber-500', text: 'text-amber-300/90', icon: <AlertTriangle className="w-3.5 h-3.5 text-amber-500/80" /> },
+        info: { bar: 'bg-[#2A2A38]', text: 'text-[#8888A0]', icon: <Zap className="w-3.5 h-3.5 text-[#555566]" /> },
+        thinking: { bar: 'bg-indigo-500', text: 'text-indigo-300/90', icon: <Loader2 className="w-3.5 h-3.5 text-indigo-400 animate-spin" /> },
+        code: { bar: 'bg-cyan-500', text: 'text-cyan-300/90', icon: <Zap className="w-3.5 h-3.5 text-cyan-500/80" /> },
     };
+
+    const colors = colorMap[log.type] || colorMap.info;
 
     return (
         <motion.div
-            initial={{ opacity: 0, x: -10 }}
+            initial={{ opacity: 0, x: -6 }}
             animate={{ opacity: 1, x: 0 }}
-            className={cn(
-                "rounded-lg overflow-hidden border transition-all duration-300",
-                log.type === 'success' ? "bg-emerald-500/5 border-emerald-500/20" :
-                    log.type === 'error' ? "bg-rose-500/5 border-rose-500/20" :
-                        log.type === 'warning' ? "bg-amber-500/5 border-amber-500/20" :
-                            "bg-[#0A0A0A] border-[#1F1F1F] hover:border-[#2F2F2F]"
-            )}
+            transition={{ duration: 0.15 }}
+            className="flex gap-0 group/log"
         >
+            {/* Color bar */}
+            <div className={cn("w-[2px] rounded-full flex-shrink-0 my-1", colors.bar, "opacity-60 group-hover/log:opacity-100 transition-opacity")} />
+
+            {/* Content */}
             <div
-                className={cn("p-3 flex items-start gap-3 cursor-pointer", log.details && "hover:bg-white/5")}
+                className={cn(
+                    "flex-1 min-w-0 pl-3 py-2 rounded-r-md transition-colors cursor-default",
+                    log.details && "cursor-pointer hover:bg-white/[0.02]"
+                )}
                 onClick={() => log.details && setExpanded(!expanded)}
             >
-                <div className="mt-0.5 shrink-0">
-                    {getIcon()}
+                <div className="flex items-center gap-2">
+                    <div className="shrink-0">{colors.icon}</div>
+                    <p className={cn("text-xs font-medium leading-snug truncate flex-1", colors.text)}>
+                        {log.message}
+                    </p>
+                    <span className="text-[10px] font-mono text-[#3A3A4A] shrink-0">{log.timestamp}</span>
+                    {log.details && (
+                        <ChevronDown className={cn("w-3.5 h-3.5 text-[#3A3A4A] transition-transform duration-150 shrink-0", expanded && "rotate-180")} />
+                    )}
                 </div>
 
-                <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2">
-                        <p className={cn(
-                            "text-xs font-medium leading-relaxed truncate",
-                            log.type === 'success' ? "text-emerald-300" :
-                                log.type === 'error' ? "text-rose-300" :
-                                    log.type === 'warning' ? "text-amber-300" :
-                                        "text-gray-300"
-                        )}>
-                            {log.message}
-                        </p>
-                        <span className="text-[9px] font-mono text-gray-600 shrink-0">{log.timestamp}</span>
-                    </div>
-                </div>
-
-                {log.details && (
-                    <ChevronDown className={cn("w-3 h-3 text-gray-600 transition-transform duration-200", expanded && "rotate-180")} />
-                )}
+                <AnimatePresence>
+                    {expanded && log.details && (
+                        <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: "auto", opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            transition={{ duration: 0.15 }}
+                        >
+                            <pre className="mt-1.5 pl-6 text-[11px] text-[#555566] font-mono whitespace-pre-wrap leading-relaxed">
+                                {log.details}
+                            </pre>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
             </div>
-
-            <AnimatePresence>
-                {expanded && log.details && (
-                    <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: "auto", opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        className="bg-[#030303] border-t border-[#1F1F1F]"
-                    >
-                        <pre className="p-3 text-[10px] text-gray-500 font-mono whitespace-pre-wrap overflow-x-auto custom-scrollbar">
-                            {log.details}
-                        </pre>
-                    </motion.div>
-                )}
-            </AnimatePresence>
         </motion.div>
     );
 }

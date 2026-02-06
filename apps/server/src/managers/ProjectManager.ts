@@ -194,7 +194,7 @@ export class ProjectManager {
         await fs.writeFile(targetPath, file.buffer);
 
         // Return the public path for serving via Express
-        return `/assets/${projectId}/assets/${subDir}/${file.originalname}`;
+        return `/assets/${projectId}/${subDir}/${file.originalname}`;
     }
 
     /**

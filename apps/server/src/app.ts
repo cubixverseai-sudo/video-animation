@@ -14,6 +14,16 @@ app.use(express.json());
 // Maps to: /projects/{projectId}/assets/{type}/{filename}
 app.use('/assets', express.static(path.resolve(process.cwd(), '../../projects')));
 
+// Serve rendered exports for download
+// URL: /exports/{filename}
+// Maps to: /exports/{filename}
+app.use('/exports', express.static(path.resolve(process.cwd(), '../../exports'), {
+    setHeaders: (res, filePath) => {
+        // Force download instead of playing in browser
+        res.setHeader('Content-Disposition', `attachment; filename="${path.basename(filePath)}"`);
+    }
+}));
+
 app.get('/health', (req, res) => {
     res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
 });

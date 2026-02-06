@@ -12,12 +12,16 @@ const nextConfig: NextConfig = {
             bodySizeLimit: '10mb',
         },
     },
-    // Serve audio files from projects folder via API route
+    // Serve assets from projects folder via API routes
     async rewrites() {
         return [
             {
                 source: '/assets/:projectId/audio/:path*',
                 destination: '/api/audio/:projectId/:path*',
+            },
+            {
+                source: '/assets/:projectId/images/:path*',
+                destination: '/api/images/:projectId/:path*',
             },
         ];
     },

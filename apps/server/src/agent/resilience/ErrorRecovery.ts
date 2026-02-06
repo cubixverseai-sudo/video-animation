@@ -403,8 +403,10 @@ export class ErrorRecovery {
 
         for (const error of errors) {
             const data = error.content as any;
-            byCategory[data.category] = (byCategory[data.category] || 0) + 1;
-            byTool[data.tool] = (byTool[data.tool] || 0) + 1;
+            const cat = data.category as ErrorCategory;
+            const tool = data.tool as string;
+            byCategory[cat] = (byCategory[cat] || 0) + 1;
+            byTool[tool] = (byTool[tool] || 0) + 1;
         }
 
         // Calculate recovery success rate

@@ -1,5 +1,4 @@
-import { Play, Pause, Maximize2, Download, Lock, Cpu, Activity, Loader2 } from 'lucide-react';
-import { Button } from '@/components/shared/Button';
+import { Lock, Loader2 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useSocket } from '@/providers/SocketProvider';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -11,17 +10,14 @@ export function PreviewContainer() {
     const { status, projectId } = useProjectStore();
     const { isThinking } = useAgentStore();
     
-    // Track if the preview is ready (set when preview:ready event is received)
     const [isPreviewReady, setIsPreviewReady] = useState(false);
     
-    // Reset preview ready state when agent starts working
     useEffect(() => {
         if (isThinking) {
             setIsPreviewReady(false);
         }
     }, [isThinking]);
     
-    // Listen for preview:ready event from server
     useEffect(() => {
         if (!socket) return;
         
@@ -36,113 +32,120 @@ export function PreviewContainer() {
         };
     }, [socket]);
 
-    // Unlock only when preview is ready and agent is not actively working
-    const isLocked = !projectId || status === 'idle' || status === 'generating' || isThinking || !isPreviewReady;
-
-    // Use the new isolated preview route
+    const isLocked = !projectId || (!isPreviewReady) || (isThinking && !isPreviewReady);
     const previewUrl = `/preview/${projectId}`;
 
     return (
-        <div className="flex-1 flex flex-col relative overflow-hidden group">
-            {/* Cinematic Background Pattern */}
-            <div className="absolute inset-0 opacity-20 pointer-events-none"
-                style={{ backgroundImage: 'radial-gradient(var(--accent-primary) 0.5px, transparent 0.5px)', backgroundSize: '24px 24px' }}
-            />
-
+        <div className="flex-1 flex flex-col relative overflow-hidden">
             {/* Viewport Area */}
-            <div className="flex-1 flex items-center justify-center p-12 relative z-10">
+            <div className="flex-1 flex items-center justify-center p-4 md:p-6 relative z-10">
                 <motion.div
-                    initial={{ scale: 0.9, opacity: 0 }}
+                    initial={{ scale: 0.95, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
-                    className="aspect-video w-full max-w-5xl glass-pane border border-white/10 relative shadow-[0_0_100px_rgba(0,0,0,0.5)] overflow-hidden"
+                    transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+                    className="aspect-video w-full max-w-5xl relative rounded-lg overflow-hidden"
+                    style={{
+                        boxShadow: isLocked
+                            ? '0 0 80px rgba(99, 102, 241, 0.03)'
+                            : '0 4px 60px rgba(0,0,0,0.5), 0 0 120px rgba(99, 102, 241, 0.04)',
+                    }}
                 >
-                    {/* The Player - Isolated in Iframe */}
-                    <div className={`w-full h-full transition-all duration-1000 ${isLocked ? 'blur-3xl grayscale scale-95 opacity-20' : 'blur-0 grayscale-0 scale-100 opacity-100'}`}>
+                    {/* Subtle border */}
+                    <div className="absolute inset-0 rounded-lg border border-white/[0.04] z-30 pointer-events-none" />
+
+                    {/* The Player */}
+                    <div className={`w-full h-full transition-all duration-700 ease-out ${isLocked ? 'blur-2xl scale-[0.97] opacity-10' : 'blur-0 scale-100 opacity-100'}`}>
                         {!isLocked && (
                             <iframe
                                 src={previewUrl}
-                                className="w-full h-full border-0"
-                                title="Isolated Video Preview"
+                                className="w-full h-full border-0 bg-black"
+                                title="Video Preview"
                                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                                 allowFullScreen
                             />
                         )}
                     </div>
 
-                    {/* --- LOCKED OVERLAY (THE AGENT HUD) --- */}
+                    {/* Locked Overlay */}
                     <AnimatePresence>
                         {isLocked && (
                             <motion.div
                                 initial={{ opacity: 0 }}
                                 animate={{ opacity: 1 }}
-                                exit={{ opacity: 0, scale: 1.1 }}
-                                className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/40 backdrop-blur-sm"
+                                exit={{ opacity: 0, transition: { duration: 0.4 } }}
+                                className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-[#06060A]/80 backdrop-blur-sm"
                             >
-                                {/* Scanner Effect */}
+                                {/* Scan line */}
                                 <motion.div
-                                    animate={{ top: ['-10%', '110%'] }}
-                                    transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
-                                    className="absolute left-0 right-0 h-[1px] bg-indigo-500/40 shadow-[0_0_15px_rgba(99,102,241,1)] z-0"
+                                    animate={{ top: ['-5%', '105%'] }}
+                                    transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
+                                    className="absolute left-0 right-0 h-px z-0"
+                                    style={{
+                                        background: 'linear-gradient(90deg, transparent, rgba(99,102,241,0.3), rgba(99,102,241,0.5), rgba(99,102,241,0.3), transparent)',
+                                        boxShadow: '0 0 20px rgba(99,102,241,0.2)',
+                                    }}
                                 />
 
                                 <div className="relative z-10 flex flex-col items-center text-center">
-                                    <div className="relative mb-6">
-                                        <div className="absolute inset-0 rounded-full border border-indigo-500/20 animate-ping" />
-                                        <div className="relative w-16 h-16 rounded-full bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center">
-                                            <Lock className="w-6 h-6 text-indigo-400" />
+                                    {/* Lock icon with pulse */}
+                                    <div className="relative mb-5">
+                                        <motion.div
+                                            className="absolute inset-0 rounded-full border border-indigo-500/15"
+                                            animate={{ scale: [1, 1.8], opacity: [0.4, 0] }}
+                                            transition={{ duration: 2, repeat: Infinity }}
+                                        />
+                                        <div className="relative w-14 h-14 rounded-full bg-indigo-500/5 border border-indigo-500/15 flex items-center justify-center">
+                                            <Lock className="w-6 h-6 text-indigo-400/70" />
                                         </div>
                                     </div>
 
-                                    <h3 className="text-xl font-black italic tracking-widest text-white mb-1 uppercase">
-                                        System Isolated
+                                    <h3 className="text-base font-bold tracking-[0.25em] text-white/80 mb-2 uppercase">
+                                        Rendering
                                     </h3>
-                                    <div className="flex items-center gap-2 mb-6">
-                                        <Loader2 className="w-3 h-3 text-indigo-500 animate-spin" />
-                                        <span className="text-[10px] font-mono text-indigo-300 uppercase tracking-widest">
-                                            {isThinking ? "Agent Constructing Framework..." : "Stabilizing Neural Link..."}
+                                    <div className="flex items-center gap-2">
+                                        <Loader2 className="w-3.5 h-3.5 text-indigo-400/60 animate-spin" />
+                                        <span className="text-xs font-mono text-indigo-300/50 uppercase tracking-widest">
+                                            {isThinking ? "Building composition..." : "Preparing preview..."}
                                         </span>
-                                    </div>
-
-                                    {/* Small Tech Stats */}
-                                    <div className="flex gap-4">
-                                        <div className="flex items-center gap-2 px-3 py-1 bg-white/5 rounded border border-white/5">
-                                            <Cpu className="w-3 h-3 text-zinc-500" />
-                                            <span className="text-[9px] font-mono text-zinc-400 uppercase">GPU-ACCEL</span>
-                                        </div>
-                                        <div className="flex items-center gap-2 px-3 py-1 bg-white/5 rounded border border-white/5">
-                                            <Activity className="w-3 h-3 text-indigo-500" />
-                                            <span className="text-[9px] font-mono text-zinc-400 uppercase">CALIBRATING</span>
-                                        </div>
                                     </div>
                                 </div>
                             </motion.div>
                         )}
                     </AnimatePresence>
 
-                    {/* Corner Accents (Always Visible) */}
-                    <div className="absolute top-0 left-0 w-8 h-8 border-t-2 border-l-2 border-[var(--accent-primary)]/30 rounded-tl-xl p-1 pointer-events-none" />
-                    <div className="absolute top-0 right-0 w-8 h-8 border-t-2 border-r-2 border-[var(--status-info)]/30 rounded-tr-xl p-1 pointer-events-none" />
-                    <div className="absolute bottom-0 left-0 w-8 h-8 border-b-2 border-l-2 border-[var(--accent-secondary)]/30 rounded-bl-xl p-1 pointer-events-none" />
-                    <div className="absolute bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 border-[var(--accent-primary)]/30 rounded-br-xl p-1 pointer-events-none" />
+                    {/* Corner marks */}
+                    {[
+                        'top-0 left-0 border-t border-l rounded-tl',
+                        'top-0 right-0 border-t border-r rounded-tr',
+                        'bottom-0 left-0 border-b border-l rounded-bl',
+                        'bottom-0 right-0 border-b border-r rounded-br',
+                    ].map((pos, i) => (
+                        <div
+                            key={i}
+                            className={`absolute w-5 h-5 ${pos} border-indigo-500/15 pointer-events-none z-30`}
+                        />
+                    ))}
                 </motion.div>
             </div>
 
-            {/* Bottom Info Status (Hidden when locked for cleaner look) */}
+            {/* Bottom Stats */}
             <AnimatePresence>
                 {!isLocked && (
                     <motion.div
-                        initial={{ opacity: 0, y: 10 }}
+                        initial={{ opacity: 0, y: 8 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="absolute bottom-4 right-6 pointer-events-none flex items-center gap-6 z-20"
+                        exit={{ opacity: 0, y: 8 }}
+                        transition={{ delay: 0.2 }}
+                        className="absolute bottom-3 right-5 pointer-events-none flex items-center gap-4 z-20"
                     >
                         <div className="flex flex-col items-end">
-                            <span className="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-widest leading-none">Export Resolution</span>
-                            <span className="text-xs font-mono text-[var(--accent-primary)]">3840 x 2160 PXL</span>
+                            <span className="text-[10px] text-[#4A4A5A] font-semibold uppercase tracking-[0.15em] leading-none">Resolution</span>
+                            <span className="text-xs font-mono text-indigo-400/60 mt-0.5">1920 x 1080</span>
                         </div>
-                        <div className="w-px h-8 bg-[var(--border-visible)]" />
+                        <div className="w-px h-6 bg-[#1A1A24]" />
                         <div className="flex flex-col items-end">
-                            <span className="text-[10px] text-[var(--text-muted)] font-bold uppercase tracking-widest leading-none">Frame Rate</span>
-                            <span className="text-xs font-mono text-[var(--status-info)]">60.00 FPS</span>
+                            <span className="text-[10px] text-[#4A4A5A] font-semibold uppercase tracking-[0.15em] leading-none">Frame Rate</span>
+                            <span className="text-xs font-mono text-[#3B82F6]/60 mt-0.5">30 FPS</span>
                         </div>
                     </motion.div>
                 )}

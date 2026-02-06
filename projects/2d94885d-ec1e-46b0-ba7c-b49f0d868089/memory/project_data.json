@@ -1,0 +1,12 @@
+{
+  "files": [
+    "PLAN.md",
+    "scenes/IntroScene.tsx",
+    "components/ParticleField.tsx",
+    "scenes/LogoRevealScene.tsx",
+    "Main.tsx"
+  ],
+  "decisions": [],
+  "styleDNA": {},
+  "lastUpdated": 1770375043793
+}

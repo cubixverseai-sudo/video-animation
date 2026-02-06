@@ -1,0 +1,14 @@
+{
+  "id": "b87d81f0-4574-4c48-9866-d2a1f399c963",
+  "name": "Project 3",
+  "description": "Generated from: \"create best video motion for logo storia this is p...\"",
+  "createdAt": "2026-02-06T11:29:33.419Z",
+  "updatedAt": "2026-02-06T11:29:33.419Z",
+  "status": "draft",
+  "settings": {
+    "fps": 30,
+    "duration": 150,
+    "width": 1920,
+    "height": 1080
+  }
+}

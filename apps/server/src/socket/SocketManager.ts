@@ -10,6 +10,7 @@ export class SocketManager {
 
     public projectStartCallback?: (data: any) => void;
     public projectJoinCallback?: (projectId: string) => void;
+    public renderStartCallback?: (data: any) => void;
 
     private setupConnection() {
         this.io.on('connection', (socket: Socket) => {
@@ -37,7 +38,14 @@ export class SocketManager {
             socket.on('agent:prompt', (data) => {
                 console.log('Agent prompt received:', data);
                 if (this.projectStartCallback) {
-                    this.projectStartCallback(data); // Reusing same callback for now or add another
+                    this.projectStartCallback(data);
+                }
+            });
+
+            socket.on('render:start', (data) => {
+                console.log('Render start requested:', data);
+                if (this.renderStartCallback) {
+                    this.renderStartCallback(data);
                 }
             });
         });
@@ -49,6 +57,10 @@ export class SocketManager {
 
     public onProjectJoin(callback: (projectId: string) => void) {
         this.projectJoinCallback = callback;
+    }
+
+    public onRenderStart(callback: (data: any) => void) {
+        this.renderStartCallback = callback;
     }
 
     // Generic broadcast method

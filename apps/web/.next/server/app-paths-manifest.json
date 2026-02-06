@@ -1,1 +1,6 @@
-{}
+{
+  "/api/audio/[projectId]/[...path]/route": "app/api/audio/[projectId]/[...path]/route.js",
+  "/page": "app/page.js",
+  "/studio/[projectId]/page": "app/studio/[projectId]/page.js",
+  "/preview/[projectId]/page": "app/preview/[projectId]/page.js"
+}

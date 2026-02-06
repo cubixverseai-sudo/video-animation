@@ -64,22 +64,37 @@ export function RefinementBar() {
         }
     }
 
+    const suggestions = [
+        { label: 'Make it faster', icon: '⚡' },
+        { label: 'Add cinematic fade', icon: '🎬' },
+        { label: 'Indigo Vibrance', icon: '🎨' },
+        { label: 'Beat Sync', icon: '🎵' },
+    ];
+
     return (
-        <div className="absolute bottom-10 left-1/2 -translate-x-1/2 w-full max-w-2xl px-4 z-50">
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 w-full max-w-2xl px-4 z-50">
             <motion.div
-                initial={{ y: 20, opacity: 0 }}
+                initial={{ y: 16, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
-                className="glass-pane premium-border p-2 rounded-2xl shadow-2xl"
+                transition={{ delay: 0.1 }}
+                className="rounded-xl overflow-hidden"
+                style={{
+                    background: 'linear-gradient(135deg, rgba(12, 12, 18, 0.95), rgba(8, 8, 12, 0.98))',
+                    backdropFilter: 'blur(20px)',
+                    border: '1px solid rgba(255, 255, 255, 0.04)',
+                    boxShadow: '0 8px 40px rgba(0, 0, 0, 0.4), 0 0 80px rgba(99, 102, 241, 0.03)',
+                }}
             >
                 {/* Suggestions */}
-                <div className="flex gap-2 px-2 overflow-x-auto pb-2 scrollbar-hide no-scrollbar">
-                    {['⚡ Make it faster', '🎬 Add cinematic fade', '🎨 Indigo Vibrance', '🎵 Beat Sync'].map((chip) => (
+                <div className="flex gap-2 px-3.5 pt-3 pb-1.5 overflow-x-auto scrollbar-hide no-scrollbar">
+                    {suggestions.map((chip) => (
                         <button
-                            key={chip}
-                            onClick={() => { setInput(chip.replace(/[^a-zA-Z\s]/g, '').trim()); }}
-                            className="px-3 py-1.5 rounded-full bg-white/5 border border-white/5 text-[10px] font-bold uppercase tracking-wider text-[var(--text-secondary)] hover:bg-[var(--accent-primary)]/20 hover:text-[var(--text-primary)] hover:border-[var(--accent-primary)]/30 transition-all whitespace-nowrap"
+                            key={chip.label}
+                            onClick={() => { setInput(chip.label); }}
+                            className="px-3 py-1.5 rounded-md bg-white/[0.03] border border-white/[0.04] text-[11px] font-semibold uppercase tracking-wider text-[#6A6A80] hover:bg-indigo-500/8 hover:text-indigo-300/80 hover:border-indigo-500/15 transition-all whitespace-nowrap"
                         >
-                            {chip}
+                            <span className="mr-1">{chip.icon}</span>
+                            {chip.label}
                         </button>
                     ))}
                 </div>
@@ -91,12 +106,12 @@ export function RefinementBar() {
                             initial={{ height: 0, opacity: 0 }}
                             animate={{ height: 'auto', opacity: 1 }}
                             exit={{ height: 0, opacity: 0 }}
-                            className="px-4 pb-2"
+                            className="px-3 pb-1"
                         >
-                            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-indigo-500/10 border border-indigo-500/20 w-fit">
-                                <Sparkles className="w-3 h-3 text-indigo-400" />
-                                <span className="text-[10px] font-mono text-indigo-200">{attachedFile.name}</span>
-                                <button onClick={() => setAttachedFile(null)} className="hover:text-red-400 transition-colors">
+                            <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-indigo-500/8 border border-indigo-500/15 w-fit">
+                                <Sparkles className="w-3 h-3 text-indigo-400/70" />
+                                <span className="text-[11px] font-mono text-indigo-300/70">{attachedFile.name}</span>
+                                <button onClick={() => setAttachedFile(null)} className="text-[#555566] hover:text-red-400 transition-colors">
                                     <X className="w-3 h-3" />
                                 </button>
                             </div>
@@ -105,7 +120,7 @@ export function RefinementBar() {
                 </AnimatePresence>
 
                 {/* Input Area */}
-                <div className="relative mt-1">
+                <div className="relative px-1 pb-1.5 pt-0.5">
                     <input
                         type="file"
                         ref={fileInputRef}
@@ -116,7 +131,7 @@ export function RefinementBar() {
 
                     <button
                         onClick={() => fileInputRef.current?.click()}
-                        className="absolute left-3 top-1/2 -translate-y-1/2 p-2 rounded-xl hover:bg-white/5 text-[var(--text-muted)] hover:text-[var(--accent-primary)] transition-all"
+                        className="absolute left-3.5 top-1/2 -translate-y-1/2 p-1.5 rounded-lg hover:bg-white/[0.03] text-[#444455] hover:text-indigo-400/70 transition-all"
                     >
                         {isUploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Paperclip className="w-5 h-5" />}
                     </button>
@@ -126,14 +141,14 @@ export function RefinementBar() {
                         onChange={(e) => setInput(e.target.value)}
                         onKeyDown={handleKeyDown}
                         placeholder="Type a creative twist... 'Add glitch effects to titles'"
-                        className="w-full bg-transparent border-none rounded-xl pl-12 pr-24 py-4 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-0 transition-all"
+                        className="w-full bg-transparent border-none rounded-lg pl-12 pr-24 py-3.5 text-sm text-gray-200 placeholder:text-[#3A3A4A] focus:outline-none focus:ring-0 transition-all"
                     />
                     <button
                         disabled={(!input.trim() && !attachedFile) || isUploading}
                         onClick={handleSend}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 px-4 py-2 rounded-xl bg-gradient-to-r from-[var(--accent-primary)] to-[var(--accent-secondary)] text-white text-xs font-bold shadow-lg shadow-[var(--accent-glow)] disabled:opacity-30 disabled:grayscale hover:scale-105 transition-all active:scale-95"
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 px-4 py-2 rounded-lg bg-gradient-to-r from-indigo-500 to-purple-500 text-white text-xs font-bold tracking-wider uppercase shadow-lg shadow-indigo-500/10 disabled:opacity-20 disabled:grayscale hover:shadow-indigo-500/20 hover:scale-[1.02] transition-all active:scale-[0.98]"
                     >
-                        DIRECT
+                        Direct
                     </button>
                 </div>
             </motion.div>
