@@ -1,4 +1,4 @@
-import { Main as CurrentComp } from '@projects/4596776b-2376-427b-9066-cf0902f5b501/Main';
+import { Main as CurrentComp } from '@projects/b8408f04-fbd6-4188-b9ec-6899db62da17/Main';
 
 export const CurrentComposition = CurrentComp;
 export const currentProps = {};

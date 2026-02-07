@@ -607,6 +607,42 @@ export const TOOLS = [
             properties: {},
             required: []
         }
+    },
+
+    // ═══════════════════════════════════════════════════════════════
+    // 🎭 GSAP REFERENCE SYSTEM
+    // ═══════════════════════════════════════════════════════════════
+    {
+        name: "get_gsap_reference",
+        description: "Get GSAP animation reference and working code examples for Remotion. Use this when you need detailed code patterns for a specific GSAP plugin (SplitText, DrawSVGPlugin, ScrambleTextPlugin, etc.) or the full cookbook.",
+        parameters: {
+            type: "OBJECT",
+            properties: {
+                plugin: {
+                    type: "STRING",
+                    description: "Plugin name to get reference for: 'SplitText', 'DrawSVGPlugin', 'ScrambleTextPlugin', 'TextPlugin', 'CustomEase', 'CustomBounce', 'CustomWiggle', 'Physics2DPlugin', 'MotionPathPlugin', 'MorphSVGPlugin', 'EasePack', or 'all' for the full cookbook"
+                }
+            },
+            required: ["plugin"]
+        }
+    },
+
+    // ═══════════════════════════════════════════════════════════════
+    // 🎲 3D REFERENCE SYSTEM (React Three Fiber)
+    // ═══════════════════════════════════════════════════════════════
+    {
+        name: "get_three_reference",
+        description: "Get React Three Fiber + Remotion 3D animation reference and working code examples. Use this when you need detailed code patterns for 3D scenes (ThreeCanvas, Text3D, particles, stars, materials, camera animation, 3D+2D hybrid, etc.).",
+        parameters: {
+            type: "OBJECT",
+            properties: {
+                topic: {
+                    type: "STRING",
+                    description: "Topic to get reference for: 'Text3D', 'particles', 'stars', 'materials', 'camera', 'hybrid', 'sparkles', 'environment', 'base', or 'all' for the full cookbook"
+                }
+            },
+            required: ["topic"]
+        }
     }
 ];
 

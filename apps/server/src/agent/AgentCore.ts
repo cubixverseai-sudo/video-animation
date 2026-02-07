@@ -532,6 +532,10 @@ registerRoot(RemotionRoot);
                         console.log(`🔧 Fixed tool name typo: ${originalName} → ${name}`);
                     }
 
+                    // --- FIX GEMINI TOOL ARGUMENT KEY TYPOS ---
+                    // Gemini doubles characters in parameter keys (packkages, componenttName, etc.)
+                    args = this.fixGeminiArgKeys(args);
+
                     console.log(`⚙️ [DEBUG] Executing tool: ${name}`, JSON.stringify(args).substring(0, 200));
 
                     // --- PROFESSIONAL ACTION REPORTING ---
@@ -821,7 +825,266 @@ registerRoot(RemotionRoot);
         return matches / correct.length;
     }
 
+    // All known tool parameter names (used for arg key typo correction)
+    private static readonly KNOWN_ARG_KEYS = new Set([
+        'path', 'content', 'edits', 'startLine', 'endLine', 'newContent',
+        'command', 'packages', 'reason', 'componentName', 'importPath',
+        'durationInFrames', 'fps', 'width', 'height', 'entry', 'context',
+        'choice', 'message', 'query', 'limit', 'type', 'per_page', 'url',
+        'filename', 'assetType', 'soundId', 'prompt', 'scenes', 'totalFrames',
+        'mood', 'category', 'keywords', 'timing', 'duration', 'audioPlan',
+        'animationType', 'sceneType', 'animation', 'feedback', 'audio',
+        'videoType', 'durationSeconds', 'keyMessage', 'style', 'name',
+        'fileName', 'startFrame', 'endFrame', 'description', 'needed',
+        'frame', 'scene', 'section', 'data', 'plugin', 'topic', 'imagePath',
+        'bgmDecision', 'sfxPlan', 'hasText', 'per_page',
+    ]);
+
+    /**
+     * Fixes Gemini's doubled characters in tool argument keys.
+     * e.g. "packkages" → "packages", "componenttName" → "componentName"
+     * Recursively tries removing one doubled char at a time until a known key is found.
+     */
+    private fixGeminiArgKeys(args: any): any {
+        if (!args || typeof args !== 'object' || Array.isArray(args)) return args;
+
+        const fixed: any = {};
+        for (const [key, value] of Object.entries(args)) {
+            if (AgentCore.KNOWN_ARG_KEYS.has(key)) {
+                // Key is valid — recursively fix nested objects
+                fixed[key] = (value && typeof value === 'object' && !Array.isArray(value))
+                    ? this.fixGeminiArgKeys(value) : value;
+            } else {
+                // Try removing each doubled character to find a known key
+                const corrected = this.tryFixArgKey(key, 0);
+                if (corrected && corrected !== key) {
+                    console.log(`🔧 Fixed arg key typo: ${key} → ${corrected}`);
+                    fixed[corrected] = (value && typeof value === 'object' && !Array.isArray(value))
+                        ? this.fixGeminiArgKeys(value) : value;
+                } else {
+                    // Unknown key — keep as-is
+                    fixed[key] = value;
+                }
+            }
+        }
+        return fixed;
+    }
+
+    private tryFixArgKey(key: string, depth: number): string | null {
+        if (depth > 5) return null; // prevent infinite recursion
+        if (AgentCore.KNOWN_ARG_KEYS.has(key)) return key;
+
+        for (let i = 0; i < key.length - 1; i++) {
+            if (key[i] === key[i + 1]) {
+                const candidate = key.slice(0, i) + key.slice(i + 1);
+                const result = this.tryFixArgKey(candidate, depth + 1);
+                if (result) return result;
+            }
+        }
+        return null;
+    }
+
     // TypeScript AST validation for TSX/JSX files
+    /**
+     * Fixes common Gemini character-doubling typos in code content.
+     * Shared by write_file, atomic_edit, and any other tool that writes code.
+     */
+    private fixGeminiTypos(content: string): string {
+        // Pre-pass: fix \nnimport (Gemini adds extra 'n' before import on new lines)
+        content = content.replace(/\nnimport\s/g, '\nimport ');
+        // Pre-pass: fix \nniimport, \nnfrom etc
+        content = content.replace(/\nnfrom\s/g, '\nfrom ');
+        content = content.replace(/\nnexport\s/g, '\nexport ');
+        content = content.replace(/\nnconst\s/g, '\nconst ');
+
+        const typoFixes: [RegExp, string][] = [
+            // === IMPORT/EXPORT/CONST KEYWORDS ===
+            [/immport/g, 'import'],
+            [/imporrt/g, 'import'],
+            [/impport/g, 'import'],
+            [/iimport/g, 'import'],
+            [/importt\s/g, 'import '],
+            [/frrom/g, 'from'],
+            [/ffrom/g, 'from'],
+            [/fromm\s/g, 'from '],
+            [/constt\s/g, 'const '],
+            [/cconst\s/g, 'const '],
+            [/exporrt/g, 'export'],
+            [/eexport/g, 'export'],
+            [/rreturn/g, 'return'],
+            // === REACT MODULE NAME ===
+            [/Reacct/g, 'React'],
+            [/Reeact/g, 'React'],
+            [/Reactt\b/g, 'React'],
+            // === REACT HOOKS (doubled 'u' AND doubled internal letters) ===
+            [/uuseRef/g, 'useRef'],
+            [/uuseMemo/g, 'useMemo'],
+            [/uuseEffect/g, 'useEffect'],
+            [/uuseState/g, 'useState'],
+            [/uuseCallback/g, 'useCallback'],
+            [/uuseContext/g, 'useContext'],
+            [/usseRef/g, 'useRef'],
+            [/usseMemo/g, 'useMemo'],
+            [/usseEffect/g, 'useEffect'],
+            [/usseState/g, 'useState'],
+            [/usseCallback/g, 'useCallback'],
+            [/useRRef/g, 'useRef'],
+            [/useReff\b/g, 'useRef'],
+            [/useMemoo\b/g, 'useMemo'],
+            [/useEffectt\b/g, 'useEffect'],
+            [/useStatee\b/g, 'useState'],
+            // === REMOTION HOOKS ===
+            [/useCuurrentFrame/g, 'useCurrentFrame'],
+            [/useCurrrentFrame/g, 'useCurrentFrame'],
+            [/useCurrentFrrame/g, 'useCurrentFrame'],
+            [/useCurrentFramee\b/g, 'useCurrentFrame'],
+            [/useCurrentFramme/g, 'useCurrentFrame'],
+            [/uuseCurrentFrame/g, 'useCurrentFrame'],
+            [/useVideoConfigg\b/g, 'useVideoConfig'],
+            [/useVideooConfig/g, 'useVideoConfig'],
+            [/uuseVideoConfig/g, 'useVideoConfig'],
+            // === REMOTION COMPONENTS ===
+            [/AbsoluteFilll/g, 'AbsoluteFill'],
+            [/AbsoluteFil(?!l)/g, 'AbsoluteFill'],
+            [/AAbsoluteFill/g, 'AbsoluteFill'],
+            [/Sequeence/g, 'Sequence'],
+            [/Sequencce/g, 'Sequence'],
+            [/SSequence/g, 'Sequence'],
+            [/Compositionn/g, 'Composition'],
+            [/CComposition/g, 'Composition'],
+            // === REMOTION FUNCTIONS ===
+            [/staticFille/g, 'staticFile'],
+            [/sttaticFile/g, 'staticFile'],
+            [/staticFFile/g, 'staticFile'],
+            [/interpolatte/g, 'interpolate'],
+            [/iinterpolate/g, 'interpolate'],
+            [/interpolatee\b/g, 'interpolate'],
+            [/springg\b/g, 'spring'],
+            [/sspring/g, 'spring'],
+            [/Easingg\b/g, 'Easing'],
+            [/EEasing/g, 'Easing'],
+            // === AUDIO ===
+            [/Auudio/g, 'Audio'],
+            [/Audioo\b/g, 'Audio'],
+            [/Audiio/g, 'Audio'],
+            [/AAudio/g, 'Audio'],
+            // === GSAP SPECIFIC ===
+            [/CustomBouunce/g, 'CustomBounce'],
+            [/CustomBouncce/g, 'CustomBounce'],
+            [/CCustomBounce/g, 'CustomBounce'],
+            [/CustomEasse/g, 'CustomEase'],
+            [/CCustomEase/g, 'CustomEase'],
+            [/DrawSVGPluginn/g, 'DrawSVGPlugin'],
+            [/SplitTextt\b/g, 'SplitText'],
+            [/SSplitText/g, 'SplitText'],
+            [/ScrambleTextPluginn/g, 'ScrambleTextPlugin'],
+            [/registerPluginn/g, 'registerPlugin'],
+            // === THREE.JS / R3F SPECIFIC ===
+            [/ThreeCanvass\b/g, 'ThreeCanvas'],
+            [/TThreeCanvas/g, 'ThreeCanvas'],
+            [/ThreeCanvaas/g, 'ThreeCanvas'],
+            [/ambientLightt\b/g, 'ambientLight'],
+            [/pointLightt\b/g, 'pointLight'],
+            [/directionalLightt\b/g, 'directionalLight'],
+            [/meshStandardMateriall\b/g, 'meshStandardMaterial'],
+            [/meshBasicMateriall\b/g, 'meshBasicMaterial'],
+            [/boxGeometryy\b/g, 'boxGeometry'],
+            [/sphereGeometryy\b/g, 'sphereGeometry'],
+            [/instancedMeshh\b/g, 'instancedMesh'],
+            [/MeshDistortMateriall\b/g, 'MeshDistortMaterial'],
+            [/MeshWobbleMateriall\b/g, 'MeshWobbleMaterial'],
+            // === MODULE NAME TYPOS (in string literals) ===
+            [/@remotion\/threee/g, '@remotion/three'],
+            [/@remotion\/tthree/g, '@remotion/three'],
+            [/@react-three\/fiberr/g, '@react-three/fiber'],
+            [/@react-three\/fibeer/g, '@react-three/fiber'],
+            [/@react-three\/fiiber/g, '@react-three/fiber'],
+            [/@react-three\/dreii/g, '@react-three/drei'],
+            [/@react-three\/ddrei/g, '@react-three/drei'],
+            [/'rreact'/g, "'react'"],
+            [/"rreact"/g, '"react"'],
+            [/'reemotoin'/g, "'remotion'"],
+            [/'remotionn'/g, "'remotion'"],
+            [/'remotiion'/g, "'remotion'"],
+            // === REACT IMPORT QUOTE TYPOS ===
+            [/from 'react'';/g, "from 'react';"],
+            [/from ''react'/g, "from 'react'"],
+            [/from "react"";/g, 'from "react";'],
+            [/from ""react"/g, 'from "react"'],
+            [/fromm 'react'/g, "from 'react'"],
+            [/fromm "react"/g, 'from "react"'],
+            [/Reaact/g, 'React'],
+            [/RReact/g, 'React'],
+            // === PARAMETER TYPOS ===
+            [/durationInFraames/g, 'durationInFrames'],
+            [/durationInFramess/g, 'durationInFrames'],
+            [/ddurationInFrames/g, 'durationInFrames'],
+            [/importPathh/g, 'importPath'],
+            [/imporrtPath/g, 'importPath'],
+            [/iimportPath/g, 'importPath'],
+            [/componenntName/g, 'componentName'],
+            [/componentNamee/g, 'componentName'],
+            [/extrapolateeLeft/g, 'extrapolateLeft'],
+            [/extrapolateRightt/g, 'extrapolateRight'],
+            // === CSS PROPERTY TYPOS ===
+            [/zInndex/g, 'zIndex'],
+            [/zIndexx/g, 'zIndex'],
+            [/borderRadiuss/g, 'borderRadius'],
+            [/backgroundd/g, 'background'],
+            [/backgroundColorr/g, 'backgroundColor'],
+            [/fontSizee/g, 'fontSize'],
+            [/fontWeightt/g, 'fontWeight'],
+            [/fontFamilyy/g, 'fontFamily'],
+            [/textAlignn/g, 'textAlign'],
+            [/textShadoww/g, 'textShadow'],
+            [/overfloww/g, 'overflow'],
+            // === SERIES/SEQUENCE/IMG ===
+            [/Seriees/g, 'Series'],
+            [/Seriess/g, 'Series'],
+            [/Seriies/g, 'Series'],
+            [/SSeries/g, 'Series'],
+            [/Imgg\b/g, 'Img'],
+            [/IImg/g, 'Img'],
+            // === REMOTION API ===
+            [/rrandom\b/g, 'random'],
+            [/ranndom/g, 'random'],
+            // === STRUCTURAL FIXES ===
+            [/,\s*,/g, ','],
+            [/;;\s*$/gm, ';'],
+            [/  +/g, ' '],
+        ];
+
+        let fixCount = 0;
+        for (const [pattern, replacement] of typoFixes) {
+            const before = content;
+            content = content.replace(pattern, replacement);
+            if (before !== content) fixCount++;
+        }
+
+        // === DOUBLE COMMA FIX (common Gemini artifact) ===
+        content = content.replace(/,,\s*/g, ', ');
+
+        // === JSX AUTO-BALANCE: remove extra closing tags (Gemini's most common structural error) ===
+        for (const tag of ['AbsoluteFill', 'div', 'span', 'Sequence', 'Series', 'g', 'svg']) {
+            const escapedTag = tag.replace('.', '\\.');
+            let opens = (content.match(new RegExp(`<${escapedTag}(?:\\s|>)`, 'g')) || []).length;
+            let closes = (content.match(new RegExp(`<\\/${escapedTag}>`, 'g')) || []).length;
+            while (closes > opens) {
+                const lastIdx = content.lastIndexOf(`</${tag}>`);
+                if (lastIdx < 0) break;
+                content = content.substring(0, lastIdx) + content.substring(lastIdx + `</${tag}>`.length);
+                closes--;
+                fixCount++;
+            }
+        }
+
+        if (fixCount > 0) {
+            this.socketManager.emitAgentLog('info', `🔧 Fixed ${fixCount} Gemini typos`);
+        }
+
+        return content;
+    }
+
     private validateTypeScriptSyntax(code: string, fileName: string): { valid: boolean; errors: string[] } {
         const errors: string[] = [];
         
@@ -881,22 +1144,38 @@ registerRoot(RemotionRoot);
         }
 
         // 2. COMPREHENSIVE JSX TAG BALANCE CHECK
+        // Tags that are ALWAYS self-closing (never have children) — skip balance check
+        const alwaysSelfClosing = new Set([
+            'Audio', 'Video', 'Img',
+            // R3F geometry & material (intrinsic elements, always self-closing)
+            'boxGeometry', 'sphereGeometry', 'planeGeometry', 'cylinderGeometry',
+            'meshStandardMaterial', 'meshBasicMaterial', 'meshPhongMaterial',
+            'ambientLight', 'pointLight', 'directionalLight', 'spotLight',
+            // SVG self-closing
+            'stop', 'feGaussianBlur',
+        ]);
+
         const jsxTags = [
             'AbsoluteFill', 'Sequence', 'Series', 'Series.Sequence',
             'Audio', 'Video', 'Img', 'div', 'span', 'svg', 'path',
             'g', 'rect', 'circle', 'text', 'defs', 'linearGradient',
-            'radialGradient', 'stop', 'filter', 'feGaussianBlur'
+            'radialGradient', 'stop', 'filter', 'feGaussianBlur',
+            // Three.js / R3F elements
+            'ThreeCanvas', 'mesh', 'group', 'instancedMesh',
         ];
 
         for (const tag of jsxTags) {
-            const escapedTag = tag.replace('.', '\\.');
-            const allOpenings = (content.match(new RegExp(`<${escapedTag}(?:\\s|>|$)`, 'gm')) || []).length;
-            const selfClosing = (content.match(new RegExp(`<${escapedTag}[^>]*\\/>`, 'g')) || []).length;
-            const closings = (content.match(new RegExp(`<\\/${escapedTag}>`, 'g')) || []).length;
-            const nonSelfClosingOpenings = allOpenings - selfClosing;
+            if (alwaysSelfClosing.has(tag)) continue;
 
-            if (nonSelfClosingOpenings > 0 && closings !== nonSelfClosingOpenings) {
-                syntaxErrors.push(`<${tag}>: ${nonSelfClosingOpenings} opening, ${closings} closing`);
+            const escapedTag = tag.replace('.', '\\.');
+            // Count ALL openings (including self-closing like <Tag ... />)
+            const allOpenings = (content.match(new RegExp(`<${escapedTag}(?:\\s|>|$)`, 'gm')) || []).length;
+            const closings = (content.match(new RegExp(`<\\/${escapedTag}>`, 'g')) || []).length;
+
+            // Only error if MORE closing tags than opening tags (definite structural bug)
+            // Self-closing tags are included in allOpenings count, so this is safe
+            if (closings > allOpenings) {
+                syntaxErrors.push(`<${tag}>: ${allOpenings} opening (incl. self-closing), ${closings} closing — remove ${closings - allOpenings} extra </${tag}>`);
             }
         }
 
@@ -1017,6 +1296,11 @@ registerRoot(RemotionRoot);
                         '@remotion/player', '@remotion/lambda', '@remotion/gif',
                         '@remotion/media-utils', '@remotion/paths', '@remotion/shapes',
                         '@remotion/noise', '@remotion/transitions', '@remotion/google-fonts',
+                        '@remotion/media', '@remotion/three',
+                        // Already installed at root level (package.json)
+                        'gsap', 'three', '@react-three/fiber', '@react-three/drei',
+                        '@types/three', 'zustand',
+                        // Node built-ins
                         'path', 'fs', 'util', 'crypto', 'os', 'stream', 'events', 'buffer'
                     ]);
 
@@ -1046,7 +1330,7 @@ registerRoot(RemotionRoot);
                             
                             this.socketManager.emitAgentLog('info', `📦 Auto-installing: ${packageList}...`);
                             
-                            await execAsync(`pnpm add ${packageList}`, {
+                            await execAsync(`pnpm add -w ${packageList}`, {
                                 cwd: rootDir,
                                 timeout: 120000
                             });
@@ -1063,106 +1347,11 @@ registerRoot(RemotionRoot);
                     // Normalize line endings
                     content = content.replace(/\r\n/g, '\n');
                     
-                    // FIX COMMON GEMINI TYPOS (doubled/missing letters)
-                    const typoFixes: [RegExp, string][] = [
-                        // Remotion hooks - doubled letters
-                        [/useCuurrentFrame/g, 'useCurrentFrame'],
-                        [/useCurrrentFrame/g, 'useCurrentFrame'],
-                        [/useCurrentFrrame/g, 'useCurrentFrame'],
-                        [/useVideoConfigg/g, 'useVideoConfig'],
-                        [/useVideooConfig/g, 'useVideoConfig'],
-                        // Remotion components - doubled letters
-                        [/AbsoluteFilll/g, 'AbsoluteFill'],
-                        [/AbsoluteFil(?!l)/g, 'AbsoluteFill'],
-                        [/AAbsoluteFill/g, 'AbsoluteFill'],
-                        [/Sequeence/g, 'Sequence'],
-                        [/Sequencce/g, 'Sequence'],
-                        [/SSequence/g, 'Sequence'],
-                        [/Compositionn/g, 'Composition'],
-                        [/CComposition/g, 'Composition'],
-                        // Remotion functions
-                        [/staticFille/g, 'staticFile'],
-                        [/sttaticFile/g, 'staticFile'],
-                        [/staticFFile/g, 'staticFile'],
-                        [/interpolatte/g, 'interpolate'],
-                        [/iinterpolate/g, 'interpolate'],
-                        [/springg/g, 'spring'],
-                        [/sspring/g, 'spring'],
-                        [/Easingg/g, 'Easing'],
-                        [/EEasing/g, 'Easing'],
-                        // Audio
-                        [/Auudio/g, 'Audio'],
-                        [/Audioo/g, 'Audio'],
-                        [/Audiio/g, 'Audio'],
-                        [/AAudio/g, 'Audio'],
-                        // React import typos
-                        [/from 'react'';/g, "from 'react';"],
-                        [/from ''react'/g, "from 'react'"],
-                        [/from "react"";/g, 'from "react";'],
-                        [/from ""react"/g, 'from "react"'],
-                        [/fromm 'react'/g, "from 'react'"],
-                        [/fromm "react"/g, 'from "react"'],
-                        // Parameter typos
-                        [/durationInFraames/g, 'durationInFrames'],
-                        [/durationInFramess/g, 'durationInFrames'],
-                        [/ddurationInFrames/g, 'durationInFrames'],
-                        [/importPathh/g, 'importPath'],
-                        [/imporrtPath/g, 'importPath'],
-                        [/iimportPath/g, 'importPath'],
-                        [/componenntName/g, 'componentName'],
-                        [/componentNamee/g, 'componentName'],
-                        // Component props
-                        [/extrapolateeLeft/g, 'extrapolateLeft'],
-                        [/extrapolateRightt/g, 'extrapolateRight'],
-                        // Series/Sequence
-                        [/Seriees/g, 'Series'],
-                        [/Seriess/g, 'Series'],
-                        // Double brackets fix
-                        [/\}\s*\}\s*from/g, '} from'],
-                        [/\{\s*\{(\s*\w)/g, '{ $1'],
-                        // Style object fixes - missing opening brace
-                        [/style=\{\s+(\w+):/g, 'style={{ $1:'],
-                        // Double closing braces in style
-                        [/\}\}\}/g, '}}'],
-                        // Import typos with double letters
-                        [/imporrt/g, 'import'],
-                        [/impport/g, 'import'],
-                        [/iimport/g, 'import'],
-                        [/frrom/g, 'from'],
-                        [/ffrom/g, 'from'],
-                        [/Reaact/g, 'React'],
-                        [/RReact/g, 'React'],
-                        // Module name typos
-                        [/'rreact'/g, "'react'"],
-                        [/"rreact"/g, '"react"'],
-                        [/'reemotoin'/g, "'remotion'"],
-                        [/'remotionn'/g, "'remotion'"],
-                        // Remotion API typos
-                        [/rrandom/g, 'random'],
-                        [/ranndom/g, 'random'],
-                        [/Seriies/g, 'Series'],
-                        [/SSeries/g, 'Series'],
-                        [/Imgg/g, 'Img'],
-                        [/IImg/g, 'Img'],
-                        // Double commas in imports/params
-                        [/,\s*,/g, ','],
-                        // Double spaces in imports (cosmetic but prevents confusion)
-                        [/  +/g, ' '],
-                    ];
-                    
-                    let fixCount = 0;
-                    for (const [pattern, replacement] of typoFixes) {
-                        const before = content;
-                        content = content.replace(pattern, replacement);
-                        if (before !== content) fixCount++;
-                    }
+                    // FIX COMMON GEMINI TYPOS using shared method
+                    content = this.fixGeminiTypos(content);
                     
                     // Remove leading empty lines, ensure trailing newline
                     content = content.replace(/^\n+/, '').trimEnd() + '\n';
-                    
-                    if (fixCount > 0) {
-                        this.socketManager.emitAgentLog('info', `🔧 Fixed ${fixCount} Gemini typos`);
-                    }
 
                     // --- FIX CORRUPTED PROJECT IDs IN ASSET PATHS ---
                     // Gemini sometimes corrupts UUIDs in staticFile() paths:
@@ -1410,8 +1599,13 @@ registerRoot(RemotionRoot);
                 }
 
                 // --- VALIDATE RESULT BEFORE SAVING (prevent broken code) ---
-                const editedContent = lines.join('\n');
+                let editedContent = lines.join('\n');
                 const writePath = getSecurePath(args.path);
+
+                // Apply the same Gemini typo fixer as write_file
+                if (args.path.endsWith('.tsx') || args.path.endsWith('.ts') || args.path.endsWith('.jsx') || args.path.endsWith('.js')) {
+                    editedContent = this.fixGeminiTypos(editedContent);
+                }
 
                 if (args.path.endsWith('.tsx') || args.path.endsWith('.jsx')) {
                     const syntaxErrors = this.validateJSXContent(editedContent, args.path);
@@ -1494,14 +1688,39 @@ registerRoot(RemotionRoot);
                     return "❌ No packages specified. Provide an array of package names.";
                 }
 
+                // Fix common Gemini typos in package names
+                const pkgNameFixes: Record<string, string> = {
+                    '@remotion/threee': '@remotion/three',
+                    '@remotion/tthree': '@remotion/three',
+                    '@react-three/fiberr': '@react-three/fiber',
+                    '@react-three/fibeer': '@react-three/fiber',
+                    '@react-three/fiiber': '@react-three/fiber',
+                    '@react-three/dreii': '@react-three/drei',
+                    '@react-three/ddrei': '@react-three/drei',
+                    'threee': 'three',
+                    'tthree': 'three',
+                    'gsapp': 'gsap',
+                    'ggsap': 'gsap',
+                    '@types/threee': '@types/three',
+                };
+                const fixedPackages = packages.map((pkg: string) => {
+                    const fixed = pkgNameFixes[pkg] || pkg;
+                    if (fixed !== pkg) {
+                        this.socketManager.emitAgentLog('warning', `🔧 Fixed package name typo: ${pkg} → ${fixed}`);
+                    }
+                    return fixed;
+                });
+                // Deduplicate after fixing
+                const uniquePackages = [...new Set(fixedPackages)] as string[];
+
                 // Validate package names (security)
                 const validPackageRegex = /^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*(@[^@]+)?$/i;
-                const invalidPackages = packages.filter((pkg: string) => !validPackageRegex.test(pkg));
+                const invalidPackages = uniquePackages.filter((pkg: string) => !validPackageRegex.test(pkg));
                 if (invalidPackages.length > 0) {
                     return `❌ Invalid package names: ${invalidPackages.join(', ')}`;
                 }
 
-                const packageList = packages.join(' ');
+                const packageList = uniquePackages.join(' ');
                 this.socketManager.emitAgentLog('info', `📦 Installing packages: ${packageList}`);
                 this.socketManager.emitAgentLog('info', `💡 Reason: ${reason}`);
 
@@ -1509,7 +1728,7 @@ registerRoot(RemotionRoot);
                     // Install at root level of monorepo for shared access
                     const rootDir = path.resolve(this.PROJECTS_ROOT, '..');
                     
-                    const { stdout, stderr } = await execAsync(`pnpm add ${packageList}`, {
+                    const { stdout, stderr } = await execAsync(`pnpm add -w ${packageList}`, {
                         cwd: rootDir,
                         timeout: 120000 // 2 minute timeout for installation
                     });
@@ -2344,12 +2563,30 @@ ${scenes.map((s: any) => `  - [ ] ${s.fileName}`).join('\n')}
                 
                 this.socketManager.emitAgentLog('success', `✅ Project plan created! Scenes folder ready.`);
                 
+                // Load animation cookbooks for reference
+                let gsapReference = '';
+                let threeReference = '';
+                try {
+                    const gsapCookbookPath = path.resolve(__dirname, '../../../../refernce/gsap/GSAP_COOKBOOK.md');
+                    gsapReference = await fs.readFile(gsapCookbookPath, 'utf-8');
+                } catch (e) {
+                    console.warn('⚠️ Could not load GSAP cookbook:', e);
+                }
+                try {
+                    const threeCookbookPath = path.resolve(__dirname, '../../../../refernce/three/THREE_COOKBOOK.md');
+                    threeReference = await fs.readFile(threeCookbookPath, 'utf-8');
+                } catch (e) {
+                    console.warn('⚠️ Could not load THREE cookbook:', e);
+                }
+
                 return JSON.stringify({
                     success: true,
                     message: `Project plan created with ${scenes.length} scenes`,
                     planPath: 'PLAN.md',
                     scenesFolder: 'scenes/',
-                    nextStep: "Now fetch audio using 'fetch_audio' for BGM and SFX, then write each scene file."
+                    nextStep: "Now fetch audio using 'fetch_audio' for BGM and SFX, then write each scene file.",
+                    gsapReference: gsapReference ? gsapReference : undefined,
+                    threeReference: threeReference ? threeReference : undefined,
                 }, null, 2);
             }
 
@@ -2422,6 +2659,82 @@ ${scenes.map((s: any) => `  - [ ] ${s.fileName}`).join('\n')}
                     return planContent;
                 } catch (error: any) {
                     return `❌ No plan found. Call 'create_project_plan' first.`;
+                }
+            }
+
+            // ═══════════════════════════════════════════════════════════════
+            // 🎭 GSAP REFERENCE SYSTEM
+            // ═══════════════════════════════════════════════════════════════
+            case 'get_gsap_reference': {
+                const { plugin } = args;
+                const gsapRefDir = path.resolve(__dirname, '../../../../refernce/gsap');
+                
+                try {
+                    // Load the cookbook
+                    const cookbookPath = path.join(gsapRefDir, 'GSAP_COOKBOOK.md');
+                    const cookbook = await fs.readFile(cookbookPath, 'utf-8');
+                    
+                    if (plugin === 'all') {
+                        this.socketManager.emitAgentLog('info', `🎭 GSAP: Full cookbook loaded`);
+                        return cookbook;
+                    }
+                    
+                    // Extract the relevant section from cookbook
+                    // Sections are delimited by "## N. PluginName" or "## PluginName"
+                    const pluginLower = plugin.toLowerCase();
+                    const sections = cookbook.split(/(?=^## )/m);
+                    const matchedSection = sections.find(s => s.toLowerCase().includes(pluginLower));
+                    
+                    if (matchedSection) {
+                        this.socketManager.emitAgentLog('info', `🎭 GSAP: ${plugin} reference loaded`);
+                        // Also include the Golden Rule section for context
+                        const goldenRule = sections.find(s => s.includes('Golden Rule'));
+                        return (goldenRule ? goldenRule + '\n---\n\n' : '') + matchedSection;
+                    }
+                    
+                    // Fallback: try to read raw source file
+                    const srcPath = path.join(gsapRefDir, 'src', `${plugin}.js`);
+                    try {
+                        const srcContent = await fs.readFile(srcPath, 'utf-8');
+                        this.socketManager.emitAgentLog('info', `🎭 GSAP: ${plugin} raw source loaded`);
+                        return `// GSAP ${plugin} Source (use Timeline + Seek pattern for Remotion)\n\n${srcContent}`;
+                    } catch {
+                        return `❌ Plugin "${plugin}" not found in cookbook or source files. Available: SplitText, DrawSVGPlugin, ScrambleTextPlugin, TextPlugin, CustomEase, CustomBounce, CustomWiggle, Physics2DPlugin, MotionPathPlugin, MorphSVGPlugin, EasePack. Use 'all' for the full cookbook.`;
+                    }
+                } catch (error: any) {
+                    return `❌ Failed to load GSAP reference: ${error.message}`;
+                }
+            }
+
+            // ═══════════════════════════════════════════════════════════════
+            // 🎲 3D REFERENCE SYSTEM (React Three Fiber)
+            // ═══════════════════════════════════════════════════════════════
+            case 'get_three_reference': {
+                const { topic } = args;
+                const threeRefDir = path.resolve(__dirname, '../../../../refernce/three');
+                
+                try {
+                    const cookbookPath = path.join(threeRefDir, 'THREE_COOKBOOK.md');
+                    const cookbook = await fs.readFile(cookbookPath, 'utf-8');
+                    
+                    if (topic === 'all') {
+                        this.socketManager.emitAgentLog('info', `🎲 Three.js: Full cookbook loaded`);
+                        return cookbook;
+                    }
+                    
+                    const topicLower = topic.toLowerCase();
+                    const sections = cookbook.split(/(?=^## )/m);
+                    const matchedSection = sections.find(s => s.toLowerCase().includes(topicLower));
+                    
+                    if (matchedSection) {
+                        this.socketManager.emitAgentLog('info', `🎲 Three.js: ${topic} reference loaded`);
+                        const goldenRule = sections.find(s => s.includes('Golden Rule'));
+                        return (goldenRule ? goldenRule + '\n---\n\n' : '') + matchedSection;
+                    }
+                    
+                    return `❌ Topic "${topic}" not found in Three.js cookbook. Available: Text3D, particles, stars, materials, camera, hybrid, sparkles, environment, base. Use 'all' for the full cookbook.`;
+                } catch (error: any) {
+                    return `❌ Failed to load Three.js reference: ${error.message}`;
                 }
             }
 

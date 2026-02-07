@@ -1,4 +1,24 @@
 {
+  "..\\..\\..\\node_modules\\.pnpm\\@react-three+drei@10.7.7_@r_82107a53d1de301080f24214e31f68ff\\node_modules\\@react-three\\drei\\core\\VideoTexture.js -> hls.js": {
+    "id": "..\\..\\..\\node_modules\\.pnpm\\@react-three+drei@10.7.7_@r_82107a53d1de301080f24214e31f68ff\\node_modules\\@react-three\\drei\\core\\VideoTexture.js -> hls.js",
+    "files": []
+  },
+  "..\\..\\..\\node_modules\\.pnpm\\@react-three+drei@10.7.7_@r_82107a53d1de301080f24214e31f68ff\\node_modules\\@react-three\\drei\\web\\FaceLandmarker.js -> @mediapipe/tasks-vision": {
+    "id": "..\\..\\..\\node_modules\\.pnpm\\@react-three+drei@10.7.7_@r_82107a53d1de301080f24214e31f68ff\\node_modules\\@react-three\\drei\\web\\FaceLandmarker.js -> @mediapipe/tasks-vision",
+    "files": []
+  },
+  "..\\..\\..\\node_modules\\.pnpm\\@remotion+three@4.0.419_@re_7fdf942db27c73c5dc394eef245a66ab\\node_modules\\@remotion\\three\\dist\\esm\\index.mjs -> three/src/loaders/TextureLoader.js": {
+    "id": "..\\..\\..\\node_modules\\.pnpm\\@remotion+three@4.0.419_@re_7fdf942db27c73c5dc394eef245a66ab\\node_modules\\@remotion\\three\\dist\\esm\\index.mjs -> three/src/loaders/TextureLoader.js",
+    "files": [
+      "static/chunks/_app-pages-browser_node_modules_pnpm_three_0_182_0_node_modules_three_src_loaders_TextureLoader_js.js"
+    ]
+  },
+  "..\\..\\..\\node_modules\\.pnpm\\@remotion+three@4.0.419_@re_7fdf942db27c73c5dc394eef245a66ab\\node_modules\\@remotion\\three\\dist\\esm\\index.mjs -> three/src/textures/VideoTexture.js": {
+    "id": "..\\..\\..\\node_modules\\.pnpm\\@remotion+three@4.0.419_@re_7fdf942db27c73c5dc394eef245a66ab\\node_modules\\@remotion\\three\\dist\\esm\\index.mjs -> three/src/textures/VideoTexture.js",
+    "files": [
+      "static/chunks/_app-pages-browser_node_modules_pnpm_three_0_182_0_node_modules_three_src_textures_VideoTexture_js.js"
+    ]
+  },
   "..\\..\\..\\node_modules\\.pnpm\\next@15.1.0_react-dom@18.3.1_react@18.3.1__react@18.3.1\\node_modules\\next\\dist\\client\\components\\react-dev-overlay\\internal\\helpers\\use-websocket.js -> @vercel/turbopack-ecmascript-runtime/browser/dev/hmr-client/hmr-client.ts": {
     "id": "..\\..\\..\\node_modules\\.pnpm\\next@15.1.0_react-dom@18.3.1_react@18.3.1__react@18.3.1\\node_modules\\next\\dist\\client\\components\\react-dev-overlay\\internal\\helpers\\use-websocket.js -> @vercel/turbopack-ecmascript-runtime/browser/dev/hmr-client/hmr-client.ts",
     "files": [

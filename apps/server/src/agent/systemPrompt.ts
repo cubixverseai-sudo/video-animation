@@ -478,6 +478,143 @@ Before calling validate_syntax, mentally verify:
 `;
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 9: GSAP ANIMATION SYSTEM
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const GSAP_ANIMATION_SYSTEM = `
+# 🎭 GSAP ANIMATION SYSTEM — MANDATORY FOR PROFESSIONAL OUTPUT
+
+**GSAP 3.14.2** is installed. You MUST use at least 2 GSAP plugins in every project to deliver premium-quality animations.
+Basic \`interpolate()\` and \`spring()\` alone produce amateur-looking results. Combine them with GSAP for cinematic quality.
+
+## 🚨 MANDATORY: Use At Least 2 GSAP Plugins Per Project
+Pick from this table based on the video content:
+
+| Plugin | Import | Use Case |
+|--------|--------|----------|
+| **SplitText** | \`gsap/SplitText\` | ANY text animation — split into chars/words/lines, stagger reveal |
+| **DrawSVGPlugin** | \`gsap/DrawSVGPlugin\` | SVG stroke drawing on/off — decorative lines, logo outlines |
+| **ScrambleTextPlugin** | \`gsap/ScrambleTextPlugin\` | Hacker/decode text effect — tech intros |
+| **TextPlugin** | \`gsap/TextPlugin\` | Typewriter text replacement |
+| **CustomEase** | \`gsap/CustomEase\` | Custom easing curves — cinematic feel |
+| **CustomBounce** | \`gsap/CustomBounce\` | Realistic bounce on logo/text landing |
+| **CustomWiggle** | \`gsap/CustomWiggle\` | Shake/wiggle effects |
+| **Physics2DPlugin** | \`gsap/Physics2DPlugin\` | Particle explosions with velocity + gravity |
+| **MotionPathPlugin** | \`gsap/MotionPathPlugin\` | Animate elements along SVG curves |
+| **MorphSVGPlugin** | \`gsap/MorphSVGPlugin\` | Morph one SVG shape into another |
+| **EasePack** | \`gsap/EasePack\` | SlowMo, RoughEase, ExpoScaleEase |
+
+## Recommended Plugin Combos
+- **Brand Intro** → SplitText + CustomEase + DrawSVGPlugin
+- **Tech/Hacker** → ScrambleTextPlugin + Physics2DPlugin + CustomWiggle
+- **Elegant/Luxury** → SplitText + CustomEase + MotionPathPlugin
+- **Playful/Fun** → CustomBounce + Physics2DPlugin + SplitText
+
+## 🔑 Golden Rule: Timeline + Seek
+In Remotion, GSAP must use **paused timeline + seek**:
+\`\`\`tsx
+const tlRef = useRef<gsap.core.Timeline | null>(null);
+useEffect(() => {
+  const tl = gsap.timeline({ paused: true }); // ALWAYS paused
+  tl.from(ref.current, { opacity: 0, y: 50, duration: 1 });
+  tlRef.current = tl;
+  return () => { tl.kill(); };
+}, []);
+useEffect(() => {
+  tlRef.current?.seek(frame / fps); // Seek every frame
+}, [frame, fps]);
+\`\`\`
+
+## ⚠️ JSX Safety Rules (CRITICAL — prevents syntax errors)
+1. **One \`<AbsoluteFill>\` per visual layer** — never mix multiple concerns in one container
+2. **Register plugins at MODULE level** (top of file), NEVER inside component body
+3. **Count ALL tags before submitting**: every \`<AbsoluteFill>\` needs \`</AbsoluteFill>\`, every \`<div>\` needs \`</div>\`
+4. **Never wrap registerPlugin in try/catch** — if a plugin fails, the error must be visible
+5. **Keep JSX return clean** — all GSAP logic goes in \`useEffect\`, JSX is pure render only
+
+## Easing Quick Reference
+\`power1-4.in/out/inOut\`, \`sine\`, \`expo\`, \`circ\`, \`back(1.7)\`, \`elastic(1, 0.3)\`, \`bounce\`, \`steps(12)\`, \`none\` (linear)
+
+📖 Call \`get_gsap_reference\` tool for full working code examples of any plugin before writing GSAP code.
+`;
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 10: 3D ANIMATION SYSTEM (React Three Fiber)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const THREE_D_SYSTEM = `
+# 🎲 3D ANIMATION SYSTEM (React Three Fiber + Remotion)
+
+**@remotion/three**, **three**, **@react-three/fiber**, and **@react-three/drei** are installed.
+Use 3D for rotating logos, particle fields with depth, cinematic lighting, starfields, and glass/metal materials.
+
+## 🔑 Golden Rule: useCurrentFrame() — NOT useFrame()
+Every Three.js component MUST follow this exact structure:
+\`\`\`tsx
+import React from 'react';
+import { useCurrentFrame, useVideoConfig, interpolate } from 'remotion';
+import { ThreeCanvas } from '@remotion/three';
+
+export const My3DScene: React.FC = () => {
+  const frame = useCurrentFrame();
+  const { width, height } = useVideoConfig();
+
+  const rotX = frame * 0.02;
+  const rotY = frame * 0.03;
+
+  return (
+    <ThreeCanvas
+      orthographic={false}
+      width={width}
+      height={height}
+      style={{ backgroundColor: '#000' }}
+      camera={{ fov: 75, position: [0, 0, 5] }}
+    >
+      <ambientLight intensity={0.5} />
+      <pointLight position={[10, 10, 10]} />
+      <mesh rotation={[rotX, rotY, 0]}>
+        <boxGeometry args={[1, 1, 1]} />
+        <meshStandardMaterial color="hotpink" />
+      </mesh>
+    </ThreeCanvas>
+  );
+};
+\`\`\`
+
+## Available drei Helpers
+| Helper | Use Case |
+|--------|----------|
+| **Stars** | Starfield background (set speed={0}, rotate parent \`<group>\` with frame) |
+| **Sparkles** | Floating sparkle particles |
+| **MeshDistortMaterial** | Organic blob (set speed={0}, drive distort from frame) |
+| **MeshWobbleMaterial** | Wobbling surface effect |
+| **MeshReflectorMaterial** | Mirror/reflective floor |
+| **MeshTransmissionMaterial** | Glass/crystal material |
+| **Environment** | HDR lighting presets: studio, sunset, city, dawn, forest, night |
+| **ContactShadows** | Soft ground shadows |
+| **Center** | Auto-center 3D children |
+
+## 🚨 JSX SAFETY RULES FOR THREE.JS (CRITICAL — prevents syntax errors)
+1. **\`<ThreeCanvas>\`** from \`@remotion/three\` — NEVER \`<Canvas>\` from R3F
+2. **Always pass \`width={width} height={height}\`** to ThreeCanvas
+3. **NEVER use \`useFrame()\`** — only \`useCurrentFrame()\`
+4. **\`speed={0}\`** on all drei auto-animating helpers (Stars, Float, MeshDistortMaterial)
+5. **\`<Sequence layout="none">\`** required inside ThreeCanvas (no div wrapper)
+6. **3D+2D Hybrid**: ThreeCanvas in AbsoluteFill + 2D overlay in another AbsoluteFill on top
+7. **\`<mesh>\` ALWAYS has exactly 2 children**: one geometry + one material:
+   \`<mesh><boxGeometry args={[1,1,1]} /><meshStandardMaterial color="red" /></mesh>\`
+8. **Geometry and Material are ALWAYS self-closing**: \`<boxGeometry args={[1,1,1]} />\` NOT \`<boxGeometry></boxGeometry>\`
+9. **NO JSX comments inside \`<mesh>\`, \`<group>\`, or \`<ThreeCanvas>\`** — put comments ABOVE the element
+10. **Count ALL opening/closing tags**: \`<ThreeCanvas>\`→\`</ThreeCanvas>\`, \`<mesh>\`→\`</mesh>\`, \`<group>\`→\`</group>\`
+11. **Double-check all \`import\` statements** — no typos like \`immport\` or \`iimport\`
+12. **Compute rotation/position as variables ABOVE the return**, then pass them to props:
+    \`const rotX = frame * 0.02; return <mesh rotation={[rotX, 0, 0]}>...\`
+13. **Always export a named React.FC** with proper \`return ( ... )\` wrapping the ThreeCanvas
+
+📖 Call \`get_three_reference\` tool for full working code examples BEFORE writing any 3D code.
+`;
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // COMBINED SYSTEM PROMPT
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -511,6 +648,14 @@ ${AUDIO_SYSTEM}
 ---
 
 ${CREATIVE_GUIDANCE}
+
+---
+
+${GSAP_ANIMATION_SYSTEM}
+
+---
+
+${THREE_D_SYSTEM}
 
 ---
 

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Composition, registerRoot } from 'remotion';
 import { CurrentComposition } from './index';
-import { Main as Main_4596776b } from '@projects/4596776b-2376-427b-9066-cf0902f5b501/Main';
+import { Main as Main_b8408f04 } from '@projects/b8408f04-fbd6-4188-b9ec-6899db62da17/Main';
 
 /**
  * Root component for Remotion.
@@ -22,8 +22,8 @@ export const RemotionRoot: React.FC = () => {
             />
             {/* Current project composition */}
             <Composition
-                id="4596776b-2376-427b-9066-cf0902f5b501-Main"
-                component={Main_4596776b}
+                id="b8408f04-fbd6-4188-b9ec-6899db62da17-Main"
+                component={Main_b8408f04}
                 durationInFrames={300}
                 fps={30}
                 width={1920}
