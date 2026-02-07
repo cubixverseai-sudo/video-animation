@@ -10,6 +10,8 @@ node_modules/
 # Generated projects (agent output — keep folder empty via .gitkeep)
 projects/
 !projects/.gitkeep
+exports/
+
 
 # Legacy paths (can be removed after cleanup)
 apps/server/storage/
